@@ -144,6 +144,8 @@ import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
+// KEYSTONE(I210fed2d31bbac529c019efaa246818137d83527,b/242319321)
+import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Arrays;
 import java.util.ArrayList;
@@ -224,6 +226,8 @@ public class NfcService implements DeviceHostListener {
     static final int MSG_DEINIT_WIREDSE = 66;
     static final int MSG_READ_T4TNFCEE = 67;
     static final int MSG_WRITE_T4TNFCEE = 68;
+    static final int MSG_TXLDO_OVERCORRENT_RECOVERY = 69;
+    private static final int STATE_TXLDO_OVERCORRENT_ERROR = 0xE3;
 
     // SCR/MPOS constants
     static final int SE_READER_TYPE_INAVLID   = 0;
@@ -419,6 +423,7 @@ public class NfcService implements DeviceHostListener {
             new ReaderModeDeathRecipient();
     private final NfcUnlockManager mNfcUnlockManager;
 
+    private final SecureRandom mCookieGenerator = new SecureRandom();
 
     private final BackupManager mBackupManager;
     // cached version of installed packages requesting Android.permission.NFC_TRANSACTION_EVENTS
@@ -512,7 +517,7 @@ public class NfcService implements DeviceHostListener {
     boolean mNotifyReadFailed;
 
     // for recording the latest Tag object cookie
-    long mCookieUpToDate = 0;
+    long mCookieUpToDate = -1;
 
     private NfcDispatcher mNfcDispatcher;
     private PowerManager mPowerManager;
@@ -723,6 +728,13 @@ public class NfcService implements DeviceHostListener {
         mIsRecovering = true;
         new EnableDisableTask().execute(TASK_DISABLE);
         new EnableDisableTask().execute(TASK_ENABLE);
+    }
+
+    @Override
+    public void notifyCoreGenericError(int errorCode) {
+        if (errorCode == STATE_TXLDO_OVERCORRENT_ERROR) {
+            sendMessage(NfcService.MSG_TXLDO_OVERCORRENT_RECOVERY, null);
+        }
     }
 
     final class ReaderModeParams {
@@ -2965,8 +2977,10 @@ public class NfcService implements DeviceHostListener {
                 tag.findAndReadNdef();
                 // Build a new Tag object to return
                 try {
+                    /* Avoid setting mCookieUpToDate to negative values */
+                    mCookieUpToDate = mCookieGenerator.nextLong() >>> 1;
                     Tag newTag = new Tag(tag.getUid(), tag.getTechList(),
-                            tag.getTechExtras(), tag.getHandle(), this);
+                            tag.getTechExtras(), tag.getHandle(), mCookieUpToDate, this);
                     return newTag;
                 } catch (Exception e) {
                     Log.e(TAG, "Tag creation exception.", e);
@@ -3017,14 +3031,8 @@ public class NfcService implements DeviceHostListener {
         }
 
         @Override
-        public void setTagUpToDate(long cookie) throws RemoteException {
-            if (DBG) Log.d(TAG, "Register Tag " + Long.toString(cookie) + " as the latest");
-            mCookieUpToDate = cookie;
-        }
-
-        @Override
         public boolean isTagUpToDate(long cookie) throws RemoteException {
-            if (mCookieUpToDate == cookie) {
+            if (mCookieUpToDate != -1 && mCookieUpToDate == cookie) {
                 if (DBG) Log.d(TAG, "Tag " + Long.toString(cookie) + " is up to date");
                 return true;
             }
@@ -3837,9 +3845,11 @@ public class NfcService implements DeviceHostListener {
                     extras.putInt(Ndef.EXTRA_NDEF_MAXLENGTH, 0);
                     extras.putInt(Ndef.EXTRA_NDEF_CARDSTATE, Ndef.NDEF_MODE_READ_ONLY);
                     extras.putInt(Ndef.EXTRA_NDEF_TYPE, Ndef.TYPE_OTHER);
+                    /* Avoid setting mCookieUpToDate to negative values */
+                    mCookieUpToDate = mCookieGenerator.nextLong() >>> 1;
                     Tag tag = Tag.createMockTag(new byte[]{0x00},
                             new int[]{TagTechnology.NDEF},
-                            new Bundle[]{extras});
+                            new Bundle[]{extras}, mCookieUpToDate);
                     Log.d(TAG, "mock NDEF tag, starting corresponding activity");
                     Log.d(TAG, tag.toString());
                     int dispatchStatus = mNfcDispatcher.dispatchTag(tag);
@@ -3870,6 +3880,7 @@ public class NfcService implements DeviceHostListener {
                                 @Override
                                 public void onTagDisconnected(long handle) {
                                     if((mScreenState > ScreenStateHelper.SCREEN_STATE_ON_LOCKED)) {
+                                        mCookieUpToDate = -1;
                                         applyRouting(false);
                                     }
                                 }
@@ -4210,6 +4221,9 @@ public class NfcService implements DeviceHostListener {
                case MSG_WLC_DISABLE:
                 mWlc.disable(WlcServiceProxy.PersistStatus.UPDATE);
                 break;
+                case MSG_TXLDO_OVERCORRENT_RECOVERY:
+                    mDeviceHost.restartRFDiscovery();
+                    break;
                default:
                  Log.e(TAG, "Unknown message received");
                  break;
@@ -4580,8 +4594,11 @@ public class NfcService implements DeviceHostListener {
 
         private void dispatchTagEndpoint(TagEndpoint tagEndpoint, ReaderModeParams readerParams) {
             try {
+                /* Avoid setting mCookieUpToDate to negative values */
+                mCookieUpToDate = mCookieGenerator.nextLong() >>> 1;
                 Tag tag = new Tag(tagEndpoint.getUid(), tagEndpoint.getTechList(),
-                        tagEndpoint.getTechExtras(), tagEndpoint.getHandle(), mNfcTagService);
+                        tagEndpoint.getTechExtras(), tagEndpoint.getHandle(),
+                        mCookieUpToDate, mNfcTagService);
                 registerTagObject(tagEndpoint);
                 if (readerParams != null) {
                     try {
