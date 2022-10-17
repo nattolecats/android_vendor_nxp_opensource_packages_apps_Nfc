@@ -32,6 +32,15 @@
 *  Copyright 2018-2022 NXP
 *
 ******************************************************************************/
+/******************************************************************************
+ *
+ *  Changes from Qualcomm Innovation Center are provided under the following license:
+ *
+ *  Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ *  SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
+ ******************************************************************************/
+
 #include <android-base/stringprintf.h>
 #include <base/logging.h>
 #include <cutils/properties.h>
@@ -336,6 +345,8 @@ static int prevScreenState = NFA_SCREEN_STATE_OFF_UNLOCKED;
 #endif
 /////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////
+
+static jboolean nfcManager_doDeinitialize(JNIEnv*, jobject);
 
 bool nfc_debug_enabled;
 
@@ -1284,6 +1295,13 @@ if (!sP2pActive && eventData->rf_field.status == NFA_STATUS_OK) {
                         eventData->status);
     } break;
 #endif
+
+    case NFA_DM_TZ_SECURE_ZONE_DISABLE_NFC_EVT:/*TZ Secure Zone entry event to Disable NFC*/
+      DLOG_IF(INFO, nfc_debug_enabled)
+          << StringPrintf("%s: NFA_DM_TZ_SECURE_ZONE_DISABLE_NFC_EVT; received from TZ and disabling NFC", __func__);
+      nfcManager_doDeinitialize(NULL, NULL);
+      break;
+
     default:
       DLOG_IF(INFO, nfc_debug_enabled)
           << StringPrintf("%s: unhandled event", __func__);
@@ -2176,6 +2194,10 @@ static jint nfcManager_doGetLastError(JNIEnv*, jobject) {
 static jboolean nfcManager_doDeinitialize(JNIEnv*, jobject) {
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: enter", __func__);
   sIsDisabling = true;
+
+  /*Check if NFC is already disabled*/
+  if(!sIsNfaEnabled)
+    return JNI_TRUE;
 
 #if (NXP_EXTNS == TRUE)
   NativeExtFieldDetect::getInstance().deinitialize();
