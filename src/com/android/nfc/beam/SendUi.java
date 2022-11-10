@@ -634,7 +634,7 @@ public class SendUi implements Animator.AnimatorListener, View.OnTouchListener,
             }
         }
 
-        int width = crop.width();
+        /*int width = crop.width();
         int height = crop.height();
         // Take the screenshot. SurfaceControl will generate a hardware bitmap in the correct
         // orientation and size.
@@ -647,7 +647,8 @@ public class SendUi implements Animator.AnimatorListener, View.OnTouchListener,
         ScreenCapture.ScreenshotHardwareBuffer screenshotBuffer =
                 ScreenCapture.captureDisplay(captureArgs);
         final Bitmap bitmap = screenshotBuffer == null ? null : screenshotBuffer.asBitmap();
-
+        */
+        final Bitmap bitmap = null;
         // Bail if we couldn't take the screenshot
         if (bitmap == null) {
             return null;
