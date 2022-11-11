@@ -29,7 +29,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2018-2021 NXP
+*  Copyright 2018-2022 NXP
 *
 ******************************************************************************/
 package com.android.nfc.cardemulation;
@@ -72,7 +72,7 @@ public class HostEmulationManager {
     static final int STATE_W4_DEACTIVATE = 3;
     static final int STATE_XFER = 4;
 
-    /** Minimum AID lenth as per ISO7816 */
+    /** Minimum AID length as per ISO7816 */
     static final int MINIMUM_AID_LENGTH = 5;
 
     /** Length of Select APDU header including length byte */

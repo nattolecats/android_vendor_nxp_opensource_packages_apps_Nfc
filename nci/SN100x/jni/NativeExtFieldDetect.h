@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2021 NXP
+ *  Copyright 2021-2022 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -100,6 +100,21 @@ class NativeExtFieldDetect {
   **
   *******************************************************************************/
   int stopExtendedFieldDetectMode(JNIEnv* e, jobject o);
+
+  /*******************************************************************************
+  **
+  ** Function:        startCardEmulation
+  **
+  ** Description:     This API performs to start default RF discovery
+  **
+  ** Returns:         0x00 :EFDSTATUS_SUCCESS
+  **                  0x01 :EFDSTATUS_FAILED
+  **                  0x05 :EFDSTATUS_ERROR_NFC_IS_OFF
+  **                  0x06 :EFDSTATUS_ERROR_UNKNOWN
+  **
+  *******************************************************************************/
+  int startCardEmulation(JNIEnv* e, jobject o);
+
   /*******************************************************************************
   **
   ** Function:        startEfdmTimer
