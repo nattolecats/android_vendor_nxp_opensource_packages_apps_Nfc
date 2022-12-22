@@ -19,6 +19,7 @@ android_app {
     uses_libs: ["com.nxp.nfc.nq"],
     static_libs: [
         "androidx.appcompat_appcompat",
+	"com.google.android.material_material",
         "vendor.nxp.hardware.nfc-V2.0-java",
         ],
     optimize: {

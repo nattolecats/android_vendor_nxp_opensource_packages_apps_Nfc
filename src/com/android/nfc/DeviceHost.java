@@ -29,7 +29,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2018-2021 NXP
+*  Copyright 2018-2022 NXP
 *
 ******************************************************************************/
 package com.android.nfc;
@@ -131,6 +131,15 @@ public interface DeviceHost {
         boolean makeReadOnly();
 
         int getConnectedTechnology();
+
+        /**
+         * Find Ndef only
+         * As per NFC forum test specification ndef write test expects only
+         * ndef detection followed by ndef write. System property
+         * nfc.dta.skipNdefRead added to skip default ndef read before tag
+         * dispatch. This system property is valid only in reader mode.
+         */
+        void findNdef();
     }
 
     public interface TagDisconnectedCallback {
@@ -389,8 +398,13 @@ public interface DeviceHost {
     public int doEnableDebugNtf(byte fieldValue);
     public int startExtendedFieldDetectMode(int detectionTimeout);
     public int stopExtendedFieldDetectMode();
+    public int startCardEmulation();
     /**
      * Restarts RF Discovery
      */
     void restartRFDiscovery();
+    /**
+     * Enable or Disable the ULPDet Mode based on flag
+     */
+    boolean setULPDetMode(boolean flag);
 }
