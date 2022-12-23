@@ -40,6 +40,7 @@
 package com.android.nfc;
 
 import android.app.ActivityManager;
+import android.annotation.Nullable;
 import android.app.Application;
 import android.app.BroadcastOptions;
 import android.app.KeyguardManager;
@@ -78,6 +79,7 @@ import android.nfc.INfcUnlockHandler;
 import android.nfc.ITagRemovedCallback;
 import android.nfc.NdefMessage;
 import android.nfc.NfcAdapter;
+import android.nfc.NfcAntennaInfo;
 import android.nfc.Tag;
 import android.nfc.TechListParcel;
 import android.nfc.TransceiveResult;
@@ -1593,6 +1595,18 @@ public class NfcService implements DeviceHostListener {
                 mBackupManager.dataChanged();
             }
             return true;
+        }
+
+        /**
+         * Returns information regarding Nfc antennas on the device
+         * such as their relative positioning on the device.
+         *
+         * @return Information on the nfc antenna(s) on the device.
+         * @throws UnsupportedOperationException if FEATURE_NFC is unavailable.
+        */
+        @Nullable
+        public NfcAntennaInfo getNfcAntennaInfo() {
+            return null;
         }
 
         @Override
