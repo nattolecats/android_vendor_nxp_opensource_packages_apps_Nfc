@@ -2980,7 +2980,7 @@ public class NfcService implements DeviceHostListener {
                 // Build a new Tag object to return
                 try {
                     Tag newTag = new Tag(tag.getUid(), tag.getTechList(),
-                            tag.getTechExtras(), tag.getHandle(), this);
+                            tag.getTechExtras(), tag.getHandle(), mCookieUpToDate, this);
                     return newTag;
                 } catch (Exception e) {
                     Log.e(TAG, "Tag creation exception.", e);
@@ -3028,12 +3028,6 @@ public class NfcService implements DeviceHostListener {
         @Override
         public boolean getExtendedLengthApdusSupported() throws RemoteException {
             return mDeviceHost.getExtendedLengthApdusSupported();
-        }
-
-        @Override
-        public void setTagUpToDate(long cookie) throws RemoteException {
-            if (DBG) Log.d(TAG, "Register Tag " + Long.toString(cookie) + " as the latest");
-            mCookieUpToDate = cookie;
         }
 
         @Override
@@ -3857,7 +3851,7 @@ public class NfcService implements DeviceHostListener {
                     extras.putInt(Ndef.EXTRA_NDEF_TYPE, Ndef.TYPE_OTHER);
                     Tag tag = Tag.createMockTag(new byte[]{0x00},
                             new int[]{TagTechnology.NDEF},
-                            new Bundle[]{extras});
+                            new Bundle[]{extras}, mCookieUpToDate);
                     Log.d(TAG, "mock NDEF tag, starting corresponding activity");
                     Log.d(TAG, tag.toString());
                     int dispatchStatus = mNfcDispatcher.dispatchTag(tag);
@@ -4602,7 +4596,8 @@ public class NfcService implements DeviceHostListener {
         private void dispatchTagEndpoint(TagEndpoint tagEndpoint, ReaderModeParams readerParams) {
             try {
                 Tag tag = new Tag(tagEndpoint.getUid(), tagEndpoint.getTechList(),
-                        tagEndpoint.getTechExtras(), tagEndpoint.getHandle(), mNfcTagService);
+                        tagEndpoint.getTechExtras(), tagEndpoint.getHandle(),
+                        mCookieUpToDate, mNfcTagService);
                 registerTagObject(tagEndpoint);
                 if (readerParams != null) {
                     try {
