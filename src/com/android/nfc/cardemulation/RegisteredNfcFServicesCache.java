@@ -58,9 +58,6 @@ import android.util.Xml;
 import android.util.proto.ProtoOutputStream;
 
 import com.android.internal.annotations.GuardedBy;
-import com.android.internal.util.FastXmlSerializer;
-
-import com.google.android.collect.Maps;
 
 import org.xmlpull.v1.XmlPullParser;
 import org.xmlpull.v1.XmlPullParserException;
@@ -130,11 +127,11 @@ public class RegisteredNfcFServicesCache {
          * All services that have registered
          */
         final HashMap<ComponentName, NfcFServiceInfo> services =
-                Maps.newHashMap(); // Re-built at run-time
+                new HashMap<>(); // Re-built at run-time
         final HashMap<ComponentName, DynamicSystemCode> dynamicSystemCode =
-                Maps.newHashMap(); // In memory cache of dynamic System Code store
+                new HashMap<>(); // In memory cache of dynamic System Code store
         final HashMap<ComponentName, DynamicNfcid2> dynamicNfcid2 =
-                Maps.newHashMap(); // In memory cache of dynamic NFCID2 store
+                new HashMap<>(); // In memory cache of dynamic NFCID2 store
     };
 
     private UserServices findOrCreateUserLocked(int userId) {
@@ -172,8 +169,9 @@ public class RegisteredNfcFServicesCache {
                              Intent.ACTION_PACKAGE_REMOVED.equals(action));
                     if (!replaced) {
                         int currentUser = ActivityManager.getCurrentUser();
-                        if (currentUser == getProfileParentId(UserHandle.getUserId(uid))) {
-                            invalidateCache(UserHandle.getUserId(uid));
+                        if (currentUser == getProfileParentId(UserHandle.
+                                getUserHandleForUid(uid).getIdentifier())) {
+                            invalidateCache(UserHandle.getUserHandleForUid(uid).getIdentifier());
                         } else {
                             // Cache will automatically be updated on user switch
                         }
@@ -194,13 +192,13 @@ public class RegisteredNfcFServicesCache {
         intentFilter.addAction(Intent.ACTION_PACKAGE_FIRST_LAUNCH);
         intentFilter.addAction(Intent.ACTION_PACKAGE_RESTARTED);
         intentFilter.addDataScheme("package");
-        mContext.registerReceiverAsUser(mReceiver.get(), UserHandle.ALL, intentFilter, null, null);
+        mContext.registerReceiverForAllUsers(mReceiver.get(), intentFilter, null, null);
 
         // Register for events related to sdcard operations
         IntentFilter sdFilter = new IntentFilter();
         sdFilter.addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_AVAILABLE);
         sdFilter.addAction(Intent.ACTION_EXTERNAL_APPLICATIONS_UNAVAILABLE);
-        mContext.registerReceiverAsUser(mReceiver.get(), UserHandle.ALL, sdFilter, null, null);
+        mContext.registerReceiverForAllUsers(mReceiver.get(), sdFilter, null, null);
 
         File dataDir = mContext.getFilesDir();
         mDynamicSystemCodeNfcid2File =
@@ -255,7 +253,7 @@ public class RegisteredNfcFServicesCache {
         PackageManager pm;
         try {
             pm = mContext.createPackageContextAsUser("android", 0,
-                    new UserHandle(userId)).getPackageManager();
+                    UserHandle.of(userId)).getPackageManager();
         } catch (NameNotFoundException e) {
             Log.e(TAG, "Could not create user package context");
             return null;
@@ -476,7 +474,8 @@ public class RegisteredNfcFServicesCache {
                         if ("service".equals(tagName)) {
                             // See if we have a valid service
                             if (componentName != null && currentUid >= 0) {
-                                final int userId = UserHandle.getUserId(currentUid);
+                                final int userId = UserHandle.
+                                        getUserHandleForUid(currentUid).getIdentifier();
                                 UserServices userServices = findOrCreateUserLocked(userId);
                                 if (systemCode != null) {
                                     DynamicSystemCode dynamicSystemCode =
@@ -519,7 +518,7 @@ public class RegisteredNfcFServicesCache {
         FileOutputStream fos = null;
         try {
             fos = mDynamicSystemCodeNfcid2File.startWrite();
-            XmlSerializer out = new FastXmlSerializer();
+            XmlSerializer out = Xml.newSerializer();
             out.setOutput(fos, "utf-8");
             out.startDocument(null, true);
             out.setFeature(XML_INDENT_OUTPUT_FEATURE, true);

@@ -19,6 +19,8 @@ package com.android.nfc;
 import android.os.SystemProperties;
 import android.util.Log;
 
+import androidx.annotation.VisibleForTesting;
+
 import java.io.PrintWriter;
 import java.util.Arrays;
 import java.util.Locale;
@@ -185,6 +187,7 @@ public class RoutingTableParser {
     /**
     * Check commit status by inputting type and entry
     */
+    @VisibleForTesting
     public int getCommitStatus(byte type, byte[] entry) {
         if (!validateEntryInfo(type, entry)) return STATS_NOT_FOUND;
 
@@ -224,7 +227,7 @@ public class RoutingTableParser {
 
     private void addRoutingEntry(byte[] rt, int offset) {
         if (offset + 1 >= rt.length) return;
-        int valueLength = rt[offset + 1];
+        int valueLength = Byte.toUnsignedInt(rt[offset + 1]);
 
         // Qualifier-Type(1 byte) + Length(1 byte) + Value(valueLength bytes)
         if (offset + 2 + valueLength > rt.length) return;
@@ -270,7 +273,7 @@ public class RoutingTableParser {
                 return;
             }
             // Qualifier-Type(1 byte) + Length(1 byte) + Value(valueLength bytes)
-            int tlvLength = rt[offset + 1] + 2;
+            int tlvLength = Byte.toUnsignedInt(rt[offset + 1]) + 2;
 
             addRoutingEntry(rt, offset);
 
