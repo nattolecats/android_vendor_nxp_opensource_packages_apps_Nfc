@@ -630,10 +630,14 @@ public class SendUi implements Animator.AnimatorListener, View.OnTouchListener,
             }
         }
 
-        /*int width = crop.width();
+        int width = crop.width();
         int height = crop.height();
         // Take the screenshot. SurfaceControl will generate a hardware bitmap in the correct
         // orientation and size.
+	// This block needs a refactor.
+	// in keeping with other bail logic, this function simply returns null.
+	return null;
+	/*
         IBinder displayToken = SurfaceControl.getInternalDisplayToken();
         final ScreenCapture.DisplayCaptureArgs captureArgs =
                 new ScreenCapture.DisplayCaptureArgs.Builder(displayToken)
@@ -643,8 +647,7 @@ public class SendUi implements Animator.AnimatorListener, View.OnTouchListener,
         ScreenCapture.ScreenshotHardwareBuffer screenshotBuffer =
                 ScreenCapture.captureDisplay(captureArgs);
         final Bitmap bitmap = screenshotBuffer == null ? null : screenshotBuffer.asBitmap();
-        */
-        final Bitmap bitmap = null;
+
         // Bail if we couldn't take the screenshot
         if (bitmap == null) {
             return null;
@@ -653,6 +656,7 @@ public class SendUi implements Animator.AnimatorListener, View.OnTouchListener,
         // Convert to a software bitmap so it can be set in an ImageView.
         Bitmap swBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true);
         return swBitmap;
+	*/
     }
 
     @Override
