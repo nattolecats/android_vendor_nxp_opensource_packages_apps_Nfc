@@ -732,6 +732,13 @@ public class NfcService implements DeviceHostListener {
         new EnableDisableTask().execute(TASK_ENABLE);
     }
 
+    /** TZ Secure Zone Notification to Disable NFC **/
+    @Override
+    public void onTZNfcSecureZoneReported() {
+        if (DBG) Log.d(TAG, "onTZNfcSecureZoneReported() - Disbaling NFC Service");
+        new EnableDisableTask().execute(TASK_DISABLE);
+    }
+
     @Override
     public void notifyCoreGenericError(int errorCode) {
         if (errorCode == STATE_TXLDO_OVERCORRENT_ERROR) {
