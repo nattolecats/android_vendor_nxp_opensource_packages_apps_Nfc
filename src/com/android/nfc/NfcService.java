@@ -2139,6 +2139,23 @@ public class NfcService implements DeviceHostListener {
 
             mAlwaysOnListeners.remove(listener);
         }
+
+        @Override
+        public boolean isTagIntentAppPreferenceSupported() throws RemoteException {
+          return false;
+        }
+
+        @Override
+        public Map getTagIntentAppPreferenceForUser(int userId) throws RemoteException {
+          return null;
+        }
+
+        @Override
+        public int setTagIntentAppPreferenceForUser(int userId,
+            String pkg, boolean allow) throws RemoteException {
+            return 0;
+        }
+
     }
 
     final class NxpNfcAdapterService extends INxpNfcAdapter.Stub {
