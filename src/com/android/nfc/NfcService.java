@@ -752,6 +752,13 @@ public class NfcService implements DeviceHostListener {
         new EnableDisableTask().execute(TASK_ENABLE);
     }
 
+    /** TZ Secure Zone Notification to Disable NFC **/
+    @Override
+    public void onTZNfcSecureZoneReported() {
+        if (DBG) Log.d(TAG, "onTZNfcSecureZoneReported() - Disbaling NFC Service");
+        new EnableDisableTask().execute(TASK_DISABLE);
+    }
+
     @Override
     public void notifyCoreGenericError(int errorCode) {
         if (errorCode == STATE_TXLDO_OVERCORRENT_ERROR) {
@@ -2132,6 +2139,23 @@ public class NfcService implements DeviceHostListener {
 
             mAlwaysOnListeners.remove(listener);
         }
+
+        @Override
+        public boolean isTagIntentAppPreferenceSupported() throws RemoteException {
+          return false;
+        }
+
+        @Override
+        public Map getTagIntentAppPreferenceForUser(int userId) throws RemoteException {
+          return null;
+        }
+
+        @Override
+        public int setTagIntentAppPreferenceForUser(int userId,
+            String pkg, boolean allow) throws RemoteException {
+            return 0;
+        }
+
     }
 
     final class NxpNfcAdapterService extends INxpNfcAdapter.Stub {
