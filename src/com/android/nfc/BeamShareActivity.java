@@ -28,7 +28,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.net.Uri;
-import android.nfc.BeamShareData;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
 import android.nfc.NfcAdapter;
@@ -212,7 +211,7 @@ public class BeamShareActivity extends Activity {
                 }
             }
         }
-
+        /*
         BeamShareData shareData = null;
         UserHandle myUserHandle = UserHandle.of(UserHandle.myUserId());
         if (mUris.size() > 0) {
@@ -258,6 +257,7 @@ public class BeamShareActivity extends Activity {
             shareData = new BeamShareData(null, null, myUserHandle, 0);
         }
         mNfcAdapter.invokeBeam(shareData);
+        */
         finish();
     }
 

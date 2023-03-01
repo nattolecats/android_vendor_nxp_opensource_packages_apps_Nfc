@@ -65,7 +65,6 @@ import android.media.AudioAttributes;
 import android.media.SoundPool;
 import android.net.Uri;
 import android.nfc.AvailableNfcAntenna;
-import android.nfc.BeamShareData;
 import android.nfc.ErrorCodes;
 import android.nfc.FormatException;
 import android.nfc.IAppCallback;
@@ -1587,38 +1586,38 @@ public class NfcService implements DeviceHostListener {
             if (DBG) Log.d(TAG, "Polling is resumed");
         }
 
-        @Override
-        public boolean isNdefPushEnabled() throws RemoteException {
-            synchronized (NfcService.this) {
-                return mState == NfcAdapter.STATE_ON && mIsNdefPushEnabled;
-            }
-        }
+       // @Override
+       // public boolean isNdefPushEnabled() throws RemoteException {
+       //     synchronized (NfcService.this) {
+       //         return mState == NfcAdapter.STATE_ON && mIsNdefPushEnabled;
+       //     }
+       // }
 
-        @Override
-        public boolean enableNdefPush() throws RemoteException {
-            NfcPermissions.enforceAdminPermissions(mContext);
-            synchronized (NfcService.this) {
-                if (mIsNdefPushEnabled || !mIsBeamCapable) {
-                    return true;
-                }
-                Log.i(TAG, "enabling NDEF Push");
-                mPrefsEditor.putBoolean(PREF_NDEF_PUSH_ON, true);
-                mPrefsEditor.apply();
-                mIsNdefPushEnabled = true;
-                // Propagate the state change to all user profiles
-                UserManager um = mContext.getSystemService(UserManager.class);
-                List <UserHandle> luh = um.getUserProfiles();
-                for (UserHandle uh : luh){
-                    enforceBeamShareActivityPolicy(mContext, uh);
-                }
-                enforceBeamShareActivityPolicy(mContext, UserHandle.of(mUserId));
-                if (isNfcEnabled()) {
-                    mP2pLinkManager.enableDisable(true, true);
-                }
-                mBackupManager.dataChanged();
-            }
-            return true;
-        }
+       // @Override
+       // public boolean enableNdefPush() throws RemoteException {
+       //     NfcPermissions.enforceAdminPermissions(mContext);
+       //     synchronized (NfcService.this) {
+       //         if (mIsNdefPushEnabled || !mIsBeamCapable) {
+       //             return true;
+       //         }
+       //         Log.i(TAG, "enabling NDEF Push");
+       //         mPrefsEditor.putBoolean(PREF_NDEF_PUSH_ON, true);
+       //         mPrefsEditor.apply();
+       //         mIsNdefPushEnabled = true;
+       //         // Propagate the state change to all user profiles
+       //         UserManager um = mContext.getSystemService(UserManager.class);
+       //         List <UserHandle> luh = um.getUserProfiles();
+       //         for (UserHandle uh : luh){
+       //             enforceBeamShareActivityPolicy(mContext, uh);
+       //         }
+       //         enforceBeamShareActivityPolicy(mContext, UserHandle.of(mUserId));
+       //         if (isNfcEnabled()) {
+       //             mP2pLinkManager.enableDisable(true, true);
+       //         }
+       //         mBackupManager.dataChanged();
+       //     }
+       //     return true;
+       // }
 
         @Override
         public boolean isNfcSecureEnabled() throws RemoteException {
@@ -1661,31 +1660,31 @@ public class NfcService implements DeviceHostListener {
             return true;
         }
 
-        @Override
-        public boolean disableNdefPush() throws RemoteException {
-            NfcPermissions.enforceAdminPermissions(mContext);
-            synchronized (NfcService.this) {
-                if (!mIsNdefPushEnabled || !mIsBeamCapable) {
-                    return true;
-                }
-                Log.i(TAG, "disabling NDEF Push");
-                mPrefsEditor.putBoolean(PREF_NDEF_PUSH_ON, false);
-                mPrefsEditor.apply();
-                mIsNdefPushEnabled = false;
-                // Propagate the state change to all user profiles
-                UserManager um = mContext.getSystemService(UserManager.class);
-                List <UserHandle> luh = um.getUserProfiles();
-                for (UserHandle uh : luh){
-                    enforceBeamShareActivityPolicy(mContext, uh);
-                }
-                enforceBeamShareActivityPolicy(mContext, UserHandle.of(mUserId));
-                if (isNfcEnabled()) {
-                    mP2pLinkManager.enableDisable(false, true);
-                }
-                mBackupManager.dataChanged();
-            }
-            return true;
-        }
+       // @Override
+       // public boolean disableNdefPush() throws RemoteException {
+       //     NfcPermissions.enforceAdminPermissions(mContext);
+       //     synchronized (NfcService.this) {
+       //         if (!mIsNdefPushEnabled || !mIsBeamCapable) {
+       //             return true;
+       //         }
+       //         Log.i(TAG, "disabling NDEF Push");
+       //         mPrefsEditor.putBoolean(PREF_NDEF_PUSH_ON, false);
+       //         mPrefsEditor.apply();
+       //         mIsNdefPushEnabled = false;
+       //         // Propagate the state change to all user profiles
+       //         UserManager um = mContext.getSystemService(UserManager.class);
+       //         List <UserHandle> luh = um.getUserProfiles();
+       //         for (UserHandle uh : luh){
+       //             enforceBeamShareActivityPolicy(mContext, uh);
+       //         }
+       //         enforceBeamShareActivityPolicy(mContext, UserHandle.of(mUserId));
+       //         if (isNfcEnabled()) {
+       //             mP2pLinkManager.enableDisable(false, true);
+       //         }
+       //         mBackupManager.dataChanged();
+       //     }
+       //     return true;
+       // }
 
         @Override
         public void setForegroundDispatch(PendingIntent intent,
@@ -1780,20 +1779,21 @@ public class NfcService implements DeviceHostListener {
             NfcPermissions.enforceUserPermissions(mContext);
         }
 
-        @Override
-        public void invokeBeam() {
-            if (!mIsBeamCapable) {
-                return;
-            }
-            NfcPermissions.enforceUserPermissions(mContext);
+       // @Override
+       // public void invokeBeam() {
+       //     if (!mIsBeamCapable) {
+       //         return;
+       //     }
+       //     NfcPermissions.enforceUserPermissions(mContext);
 
-            if (mForegroundUtils.isInForeground(Binder.getCallingUid())) {
-                mP2pLinkManager.onManualBeamInvoke(null);
-            } else {
-                Log.e(TAG, "Calling activity not in foreground.");
-            }
-        }
+       //     if (mForegroundUtils.isInForeground(Binder.getCallingUid())) {
+       //         mP2pLinkManager.onManualBeamInvoke(null);
+       //     } else {
+       //         Log.e(TAG, "Calling activity not in foreground.");
+       //     }
+       // }
 
+       /*
         @Override
         public void invokeBeamInternal(BeamShareData shareData) {
             NfcPermissions.enforceAdminPermissions(mContext);
@@ -1820,7 +1820,7 @@ public class NfcService implements DeviceHostListener {
             //    way to do this right now without additional framework changes.
             mHandler.sendMessageDelayed(msg, INVOKE_BEAM_DELAY_MS);
         }
-
+        */
         @Override
         public INfcTag getNfcTagInterface() throws RemoteException {
             return mNfcTagService;
@@ -1865,13 +1865,13 @@ public class NfcService implements DeviceHostListener {
             mNfcDispatcher.dispatchTag(tag);
         }
 
-        @Override
-        public void setP2pModes(int initiatorModes, int targetModes) throws RemoteException {
-            NfcPermissions.enforceAdminPermissions(mContext);
-            mDeviceHost.setP2pInitiatorModes(initiatorModes);
-            mDeviceHost.setP2pTargetModes(targetModes);
-            applyRouting(true);
-        }
+       // @Override
+       // public void setP2pModes(int initiatorModes, int targetModes) throws RemoteException {
+       //     NfcPermissions.enforceAdminPermissions(mContext);
+       //     mDeviceHost.setP2pInitiatorModes(initiatorModes);
+       //     mDeviceHost.setP2pTargetModes(targetModes);
+       //     applyRouting(true);
+       // }
 
         @Override
         public void setReaderMode(IBinder binder, IAppCallback callback, int flags, Bundle extras)
@@ -3968,11 +3968,11 @@ public class NfcService implements DeviceHostListener {
                     break;
                 }
                 case MSG_INVOKE_BEAM: {
-                    try {
-                        mP2pLinkManager.onManualBeamInvoke((BeamShareData)msg.obj);
-                    }catch (Exception e){
-                        Log.e(TAG, "Invalid Beam Content received.");
-                    }
+                   // try {
+                   //     mP2pLinkManager.onManualBeamInvoke((BeamShareData)msg.obj);
+                   // }catch (Exception e){
+                   //     Log.e(TAG, "Invalid Beam Content received.");
+                   // }
                     break;
                 }
                 case MSG_COMMIT_ROUTING: {
@@ -5327,11 +5327,11 @@ public class NfcService implements DeviceHostListener {
         mCurrentDiscoveryParameters.dumpDebug(proto);
         proto.end(token);
 
-        if (mIsBeamCapable) {
-            token = proto.start(NfcServiceDumpProto.P2P_LINK_MANAGER);
-            mP2pLinkManager.dumpDebug(proto);
-            proto.end(token);
-        }
+       // if (mIsBeamCapable) {
+       //     token = proto.start(NfcServiceDumpProto.P2P_LINK_MANAGER);
+       //     mP2pLinkManager.dumpDebug(proto);
+       //     proto.end(token);
+       // }
 
         if (mIsHceCapable) {
             token = proto.start(NfcServiceDumpProto.CARD_EMULATION_MANAGER);
