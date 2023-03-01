@@ -61,7 +61,6 @@ import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
 import android.net.Uri;
-import android.nfc.BeamShareData;
 import android.nfc.IAppCallback;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
@@ -426,36 +425,36 @@ class P2pLinkManager implements Handler.Callback, P2pEventListener.Callback {
     }
 
 
-    public void onManualBeamInvoke(BeamShareData shareData) {
-        synchronized (P2pLinkManager.this)    {
-            if (mLinkState != LINK_STATE_DOWN) {
-                return;
-            }
-            if (mForegroundUtils.getForegroundUids().contains(mNdefCallbackUid)) {
-                // Try to get data from the registered NDEF callback
-                prepareMessageToSend(false);
-            } else {
-                mMessageToSend = null;
-                mUrisToSend = null;
-            }
-            if (mMessageToSend == null && mUrisToSend == null && shareData != null) {
-                // No data from the NDEF callback, get data from ShareData
-                if (shareData.uris != null) {
-                    mUrisToSend = shareData.uris;
-                } else if (shareData.ndefMessage != null) {
-                    mMessageToSend = shareData.ndefMessage;
-                }
+   // public void onManualBeamInvoke(BeamShareData shareData) {
+   //     synchronized (P2pLinkManager.this)    {
+   //         if (mLinkState != LINK_STATE_DOWN) {
+   //             return;
+   //         }
+   //         if (mForegroundUtils.getForegroundUids().contains(mNdefCallbackUid)) {
+   //             // Try to get data from the registered NDEF callback
+   //             prepareMessageToSend(false);
+   //         } else {
+   //             mMessageToSend = null;
+   //             mUrisToSend = null;
+   //         }
+   //         if (mMessageToSend == null && mUrisToSend == null && shareData != null) {
+   //             // No data from the NDEF callback, get data from ShareData
+   //             if (shareData.uris != null) {
+   //                 mUrisToSend = shareData.uris;
+   //             } else if (shareData.ndefMessage != null) {
+   //                 mMessageToSend = shareData.ndefMessage;
+   //             }
 
-                mUserHandle = shareData.userHandle;
-            }
-            if (mMessageToSend != null ||
-                    (mUrisToSend != null && mHandoverDataParser.isHandoverSupported())) {
-                mSendState = SEND_STATE_PENDING;
-                mEventListener.onP2pNfcTapRequested();
-                scheduleTimeoutLocked(MSG_WAIT_FOR_LINK_TIMEOUT, WAIT_FOR_LINK_TIMEOUT_MS);
-            }
-        }
-    }
+   //             mUserHandle = shareData.userHandle;
+   //         }
+   //         if (mMessageToSend != null ||
+   //                 (mUrisToSend != null && mHandoverDataParser.isHandoverSupported())) {
+   //             mSendState = SEND_STATE_PENDING;
+   //             mEventListener.onP2pNfcTapRequested();
+   //             scheduleTimeoutLocked(MSG_WAIT_FOR_LINK_TIMEOUT, WAIT_FOR_LINK_TIMEOUT_MS);
+   //         }
+   //     }
+   // }
 
     /**
      * Must be called on UI Thread.
@@ -560,16 +559,16 @@ class P2pLinkManager implements Handler.Callback, P2pEventListener.Callback {
 
             if (mCallbackNdef != null) {
                 if (foregroundUids.contains(mNdefCallbackUid)) {
-                    try {
-                        BeamShareData shareData = mCallbackNdef.createBeamShareData(mPeerLlcpVersion);
-                        mMessageToSend = shareData.ndefMessage;
-                        mUrisToSend = shareData.uris;
-                        mUserHandle = shareData.userHandle;
-                        mSendFlags = shareData.flags;
-                        return;
-                    } catch (Exception e) {
-                        Log.e(TAG, "Failed NDEF callback: ", e);
-                    }
+                   // try {
+                   //     BeamShareData shareData = mCallbackNdef.createBeamShareData(mPeerLlcpVersion);
+                   //     mMessageToSend = shareData.ndefMessage;
+                   //     mUrisToSend = shareData.uris;
+                   //     mUserHandle = shareData.userHandle;
+                   //     mSendFlags = shareData.flags;
+                   //     return;
+                   // } catch (Exception e) {
+                   //     Log.e(TAG, "Failed NDEF callback: ", e);
+                   // }
                 } else {
                     // This is not necessarily an error - we no longer unset callbacks from
                     // the app process itself (to prevent IPC calls on every pause).
@@ -1178,7 +1177,7 @@ class P2pLinkManager implements Handler.Callback, P2pEventListener.Callback {
                     mEventListener.onP2pSendComplete();
                     if (mCallbackNdef != null) {
                         try {
-                            mCallbackNdef.onNdefPushComplete(mPeerLlcpVersion);
+                           // mCallbackNdef.onNdefPushComplete(mPeerLlcpVersion);
                         } catch (Exception e) {
                             Log.e(TAG, "Failed NDEF completed callback: " + e.getMessage());
                         }
@@ -1269,22 +1268,22 @@ class P2pLinkManager implements Handler.Callback, P2pEventListener.Callback {
         }
     }
 
-    static int sendStateToProtoEnum(int state) {
-        switch (state) {
-            case SEND_STATE_NOTHING_TO_SEND:
-                return P2pLinkManagerProto.SEND_STATE_NOTHING_TO_SEND;
-            case SEND_STATE_NEED_CONFIRMATION:
-                return P2pLinkManagerProto.SEND_STATE_NEED_CONFIRMATION;
-            case SEND_STATE_SENDING:
-                return P2pLinkManagerProto.SEND_STATE_SENDING;
-            case SEND_STATE_COMPLETE:
-                return P2pLinkManagerProto.SEND_STATE_COMPLETE;
-            case SEND_STATE_CANCELED:
-                return P2pLinkManagerProto.SEND_STATE_CANCELED;
-            default:
-                return P2pLinkManagerProto.SEND_STATE_UNKNOWN;
-        }
-    }
+   // static int sendStateToProtoEnum(int state) {
+   //     switch (state) {
+   //         case SEND_STATE_NOTHING_TO_SEND:
+   //             return P2pLinkManagerProto.SEND_STATE_NOTHING_TO_SEND;
+   //         case SEND_STATE_NEED_CONFIRMATION:
+   //             return P2pLinkManagerProto.SEND_STATE_NEED_CONFIRMATION;
+   //         case SEND_STATE_SENDING:
+   //             return P2pLinkManagerProto.SEND_STATE_SENDING;
+   //         case SEND_STATE_COMPLETE:
+   //             return P2pLinkManagerProto.SEND_STATE_COMPLETE;
+   //         case SEND_STATE_CANCELED:
+   //             return P2pLinkManagerProto.SEND_STATE_CANCELED;
+   //         default:
+   //             return P2pLinkManagerProto.SEND_STATE_UNKNOWN;
+   //     }
+   // }
 
     static String linkStateToString(int state) {
         switch (state) {
@@ -1299,18 +1298,18 @@ class P2pLinkManager implements Handler.Callback, P2pEventListener.Callback {
         }
     }
 
-    static int linkStateToProtoEnum(int state) {
-        switch (state) {
-            case LINK_STATE_DOWN:
-                return P2pLinkManagerProto.LINK_STATE_DOWN;
-            case LINK_STATE_DEBOUNCE:
-                return P2pLinkManagerProto.LINK_STATE_DEBOUNCE;
-            case LINK_STATE_UP:
-                return P2pLinkManagerProto.LINK_STATE_UP;
-            default:
-                return P2pLinkManagerProto.LINK_STATE_UNKNOWN;
-        }
-    }
+   // static int linkStateToProtoEnum(int state) {
+   //     switch (state) {
+   //         case LINK_STATE_DOWN:
+   //             return P2pLinkManagerProto.LINK_STATE_DOWN;
+   //         case LINK_STATE_DEBOUNCE:
+   //             return P2pLinkManagerProto.LINK_STATE_DEBOUNCE;
+   //         case LINK_STATE_UP:
+   //             return P2pLinkManagerProto.LINK_STATE_UP;
+   //         default:
+   //             return P2pLinkManagerProto.LINK_STATE_UNKNOWN;
+   //     }
+   // }
 
     void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         synchronized (this) {
@@ -1335,25 +1334,25 @@ class P2pLinkManager implements Handler.Callback, P2pEventListener.Callback {
      * Never reuse a proto field number. When removing a field, mark it as reserved.
      */
     void dumpDebug(ProtoOutputStream proto) {
-        synchronized (P2pLinkManager.this) {
-            proto.write(P2pLinkManagerProto.DEFAULT_MIU, mDefaultMiu);
-            proto.write(P2pLinkManagerProto.DEFAULT_RW_SIZE, mDefaultRwSize);
-            proto.write(P2pLinkManagerProto.LINK_STATE, linkStateToProtoEnum(mLinkState));
-            proto.write(P2pLinkManagerProto.SEND_STATE, sendStateToProtoEnum(mSendState));
-            proto.write(P2pLinkManagerProto.SEND_FLAGS, mSendFlags);
-            proto.write(P2pLinkManagerProto.SEND_ENABLED, mIsSendEnabled);
-            proto.write(P2pLinkManagerProto.RECEIVE_ENABLED, mIsReceiveEnabled);
-            proto.write(P2pLinkManagerProto.CALLBACK_NDEF, String.valueOf(mCallbackNdef));
-            if (mMessageToSend != null) {
-                long token = proto.start(P2pLinkManagerProto.MESSAGE_TO_SEND);
-                mMessageToSend.dumpDebug(proto);
-                proto.end(token);
-            }
-            if (mUrisToSend != null && mUrisToSend.length > 0) {
-                for (Uri uri : mUrisToSend) {
-                    proto.write(P2pLinkManagerProto.URIS_TO_SEND, uri.toString());
-                }
-            }
-        }
+       // synchronized (P2pLinkManager.this) {
+       //     proto.write(P2pLinkManagerProto.DEFAULT_MIU, mDefaultMiu);
+       //     proto.write(P2pLinkManagerProto.DEFAULT_RW_SIZE, mDefaultRwSize);
+       //     proto.write(P2pLinkManagerProto.LINK_STATE, linkStateToProtoEnum(mLinkState));
+       //     proto.write(P2pLinkManagerProto.SEND_STATE, sendStateToProtoEnum(mSendState));
+       //     proto.write(P2pLinkManagerProto.SEND_FLAGS, mSendFlags);
+       //     proto.write(P2pLinkManagerProto.SEND_ENABLED, mIsSendEnabled);
+       //     proto.write(P2pLinkManagerProto.RECEIVE_ENABLED, mIsReceiveEnabled);
+       //     proto.write(P2pLinkManagerProto.CALLBACK_NDEF, String.valueOf(mCallbackNdef));
+       //     if (mMessageToSend != null) {
+       //         long token = proto.start(P2pLinkManagerProto.MESSAGE_TO_SEND);
+       //         mMessageToSend.dumpDebug(proto);
+       //         proto.end(token);
+       //     }
+       //     if (mUrisToSend != null && mUrisToSend.length > 0) {
+       //         for (Uri uri : mUrisToSend) {
+       //             proto.write(P2pLinkManagerProto.URIS_TO_SEND, uri.toString());
+       //         }
+       //     }
+       // }
     }
 }
