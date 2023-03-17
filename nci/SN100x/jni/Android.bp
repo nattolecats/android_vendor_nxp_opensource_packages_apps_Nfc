@@ -30,7 +30,6 @@ cc_library_shared {
     ] + ["vendor/nxp/opensource/commonsys/external/libnfc-nci/SN100x/utils/include"],
 
     shared_libs: [
-        "libandroidicu",
         "libnativehelper",
         "libcutils",
         "libutils",

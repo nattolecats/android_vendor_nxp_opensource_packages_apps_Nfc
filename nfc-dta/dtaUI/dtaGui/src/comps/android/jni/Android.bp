@@ -45,7 +45,6 @@ cc_library_shared {
     srcs: ["*.cpp"],
 
     shared_libs: [
-        "libandroidicu",
         "libnativehelper",
         "libdta",
         "libcutils",
