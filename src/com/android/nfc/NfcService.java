@@ -83,6 +83,7 @@ import android.nfc.NfcAntennaInfo;
 import android.nfc.Tag;
 import android.nfc.TechListParcel;
 import android.nfc.TransceiveResult;
+import android.nfc.cardemulation.CardEmulation;
 import android.nfc.tech.Ndef;
 import android.nfc.tech.TagTechnology;
 import android.os.AsyncTask;
@@ -155,7 +156,6 @@ import java.lang.reflect.Method;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
-// KEYSTONE(I210fed2d31bbac529c019efaa246818137d83527,b/242319321)
 import java.security.SecureRandom;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Arrays;
@@ -424,6 +424,7 @@ public class NfcService implements DeviceHostListener {
             VibrationAttributes.createForUsage(VibrationAttributes.USAGE_HARDWARE_FEEDBACK);
 
     private final UserManager mUserManager;
+    private final ActivityManager mActivityManager;
 
     private static int nci_version = NCI_VERSION_1_0;
     // NFC Execution Environment
@@ -438,11 +439,11 @@ public class NfcService implements DeviceHostListener {
     private final SeServiceDeathRecipient mSeServiceDeathRecipient =
             new SeServiceDeathRecipient();
     private final NfcUnlockManager mNfcUnlockManager;
- 
-    private final SecureRandom mCookieGenerator = new SecureRandom();
 
 
     private final BackupManager mBackupManager;
+
+    private final SecureRandom mCookieGenerator = new SecureRandom();
     // cached version of installed packages requesting Android.permission.NFC_TRANSACTION_EVENTS
     // for current user and profiles. The Integer part is the userId.
     HashMap<Integer, List<String>> mNfcEventInstalledPackages =
@@ -878,6 +879,7 @@ public class NfcService implements DeviceHostListener {
                         | PowerManager.ON_AFTER_RELEASE, "NfcService:mRequireUnlockWakeLock");
         mKeyguard = mContext.getSystemService(KeyguardManager.class);
         mUserManager = mContext.getSystemService(UserManager.class);
+        mActivityManager = mContext.getSystemService(ActivityManager.class);
         mVibrator = mContext.getSystemService(Vibrator.class);
         mVibrationEffect = VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE);
 
@@ -945,7 +947,7 @@ public class NfcService implements DeviceHostListener {
             mCardEmulationManager = new CardEmulationManager(mContext);
             mAidCache = mCardEmulationManager.getRegisteredAidCache();
         }
-        mForegroundUtils = ForegroundUtils.getInstance();
+        mForegroundUtils = ForegroundUtils.getInstance(mActivityManager);
 
         mIsSecureNfcCapable = mNfcAdapter.deviceSupportsNfcSecure();
         mIsSecureNfcEnabled =
@@ -2813,7 +2815,7 @@ public class NfcService implements DeviceHostListener {
           return mDeviceHost.stopExtendedFieldDetectMode();
         }
 
-        //@Override
+        @Override
         public int startCardEmulation() {
           NfcPermissions.enforceUserPermissions(mContext);
           return mDeviceHost.startCardEmulation();
@@ -3136,8 +3138,8 @@ public class NfcService implements DeviceHostListener {
                 tag.findAndReadNdef();
                 // Build a new Tag object to return
                 try {
-		    /* Avoid setting mCookieUpToDate to negative values */
-		    mCookieUpToDate = mCookieGenerator.nextLong() >>> 1;
+                    /* Avoid setting mCookieUpToDate to negative values */
+                    mCookieUpToDate = mCookieGenerator.nextLong() >>> 1;
                     Tag newTag = new Tag(tag.getUid(), tag.getTechList(),
                             tag.getTechExtras(), tag.getHandle(), mCookieUpToDate, this);
                     return newTag;
@@ -3186,7 +3188,7 @@ public class NfcService implements DeviceHostListener {
 
         @Override
         public boolean getExtendedLengthApdusSupported() throws RemoteException {
-            return mDeviceHost.getExtendedLengthApdusSupported();
+            return mDeviceHost.getExtendedLengthApdusSupported();    
         }
 
         @Override
@@ -3197,6 +3199,8 @@ public class NfcService implements DeviceHostListener {
             }
 
             if (DBG) Log.d(TAG, "Tag " + Long.toString(cookie) + " is out of date");
+            EventLog.writeEvent(0x534e4554, "199291025", -1,
+                    "The obsolete tag was attempted to be accessed");
             return false;
         }
     }
@@ -4042,8 +4046,8 @@ public class NfcService implements DeviceHostListener {
                             new DeviceHost.TagDisconnectedCallback() {
                                 @Override
                                 public void onTagDisconnected(long handle) {
+                                    mCookieUpToDate = -1;
                                     if((mScreenState > ScreenStateHelper.SCREEN_STATE_ON_LOCKED)) {
-					mCookieUpToDate = -1;
                                         applyRouting(false);
                                     }
                                 }
@@ -4557,6 +4561,10 @@ public class NfcService implements DeviceHostListener {
             try {
                 String reader = new String(readerByteArray, "UTF-8");
                 int uid = -1;
+                StringBuilder aidString = new StringBuilder(aid.length);
+                for (byte b : aid) {
+                    aidString.append(String.format("%02X", b));
+                }
                 for (int userId : mNfcEventInstalledPackages.keySet()) {
                     List<String> packagesOfUser = mNfcEventInstalledPackages.get(userId);
                     String[] installedPackages = new String[packagesOfUser.size()];
@@ -4571,10 +4579,6 @@ public class NfcService implements DeviceHostListener {
                     intent.putExtra(NfcAdapter.EXTRA_AID, aid);
                     intent.putExtra(NfcAdapter.EXTRA_DATA, data);
                     intent.putExtra(NfcAdapter.EXTRA_SECURE_ELEMENT_NAME, reader);
-                    StringBuilder aidString = new StringBuilder(aid.length);
-                    for (byte b : aid) {
-                        aidString.append(String.format("%02X", b));
-                    }
                     String url =
                             new String("nfc://secure:0/" + reader + "/" + aidString.toString());
                     intent.setData(Uri.parse(url));
@@ -4611,8 +4615,27 @@ public class NfcService implements DeviceHostListener {
                         }
                     }
                 }
+                String aidCategory = mCardEmulationManager
+                        .getRegisteredAidCategory(aidString.toString());
+                if (DBG) Log.d(TAG, "aid cateogry: " + aidCategory);
+
+                int offhostCategory;
+                switch (aidCategory) {
+                    case CardEmulation.CATEGORY_PAYMENT:
+                        offhostCategory = NfcStatsLog
+                              .NFC_CARDEMULATION_OCCURRED__CATEGORY__OFFHOST_PAYMENT;
+                        break;
+                    case CardEmulation.CATEGORY_OTHER:
+                        offhostCategory = NfcStatsLog
+                                .NFC_CARDEMULATION_OCCURRED__CATEGORY__OFFHOST_OTHER;
+                        break;
+                    default:
+                        offhostCategory = NfcStatsLog
+                            .NFC_CARDEMULATION_OCCURRED__CATEGORY__OFFHOST;
+                };
+
                 NfcStatsLog.write(NfcStatsLog.NFC_CARDEMULATION_OCCURRED,
-                        NfcStatsLog.NFC_CARDEMULATION_OCCURRED__CATEGORY__OFFHOST,
+                        offhostCategory,
                         reader,
                         uid);
             } catch (RemoteException e) {
@@ -4797,10 +4820,11 @@ public class NfcService implements DeviceHostListener {
 
         private void dispatchTagEndpoint(TagEndpoint tagEndpoint, ReaderModeParams readerParams) {
             try {
-		 /* Avoid setting mCookieUpToDate to negative values */
-		mCookieUpToDate = mCookieGenerator.nextLong() >>> 1;
+                /* Avoid setting mCookieUpToDate to negative values */
+                mCookieUpToDate = mCookieGenerator.nextLong() >>> 1;
                 Tag tag = new Tag(tagEndpoint.getUid(), tagEndpoint.getTechList(),
-                        tagEndpoint.getTechExtras(), tagEndpoint.getHandle(), mCookieUpToDate, mNfcTagService);
+                        tagEndpoint.getTechExtras(), tagEndpoint.getHandle(),
+                        mCookieUpToDate, mNfcTagService);
                 registerTagObject(tagEndpoint);
                 if (readerParams != null) {
                     try {

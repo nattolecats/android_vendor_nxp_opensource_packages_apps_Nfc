@@ -27,3 +27,14 @@ android_app {
         proguard_flags_files: ["proguard.flags"],
     },
 }
+
+filegroup {
+    name: "nqnfc-sources",
+    srcs: [
+        "src/**/*.java",
+        ":statslog-Nfc-java-gen",
+    ],
+    visibility: [
+        "//vendor/nxp/opensource/commonsys/packages/apps/Nfc/tests/unit",
+    ],
+}
