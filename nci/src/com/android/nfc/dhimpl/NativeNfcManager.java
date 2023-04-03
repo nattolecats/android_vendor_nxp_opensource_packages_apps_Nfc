@@ -127,7 +127,7 @@ public class NativeNfcManager implements DeviceHost {
 
         if(isHalServiceSupported == false) {
             Log.d(TAG, "Reading system property for chip-id.");
-            chipIdValue = SystemProperties.get("vendor.qti.nfc.chipid", "0x51");
+            chipIdValue = SystemProperties.get("vendor.qti.nfc.chipid", "0xc1");
             Log.d(TAG, "Chip-ID received from system property: "+chipIdValue);
         }
 
