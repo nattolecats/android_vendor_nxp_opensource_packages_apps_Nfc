@@ -15,7 +15,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Copyright 2022 NXP
+ *  Copyright 2022-2023 NXP
  *
  ******************************************************************************/
 #pragma once
@@ -39,6 +39,7 @@ typedef uint32_t tTagStatus;
 enum class TAG_API_REQUEST {
   TAG_RESELECT_API = 1,
   TAG_CHECK_NDEF_API,
+  TAG_DO_TRANSCEIVE_API,
 };
 
 enum class TAG_OPERATION {
@@ -77,11 +78,13 @@ class NfcTagExtns {
   /*
    * Index for Non-standard tag type
    * into mNonStdCardTimeDiff array*/
-  static const int MFC = 1;
-  static const int ISO_DEP = 2;
+  static const int MFC = 0;
+  static const int ISO_DEP = 1;
 
   uint8_t mNfcID0[4]; /* ISO-DEP TypeB NfcID value*/
   uint32_t tagState;  /* Current state in NfcTagExtns being processed*/
+
+  bool isMfcTransceiveFailed;
 
   /**
    * Non-standard tag state as per the API request
@@ -116,6 +119,7 @@ class NfcTagExtns {
   void processtagSelectEvent(tNFA_CONN_EVT_DATA* data);
   void processDiscoveryNtf(tNFA_CONN_EVT_DATA* data);
   void processActivatedNtf(tNFA_CONN_EVT_DATA* data);
+  void processMfcTransFailed();
 
   // Support methods for Non-standard tag handling
   void storeNonStdTagData();
@@ -154,4 +158,6 @@ class NfcTagExtns {
   void setCurrentTargetType(int type);
   void abortTagOperation();
   bool shouldSkipProtoActivate(tNFC_PROTOCOL protocol);
+  bool isMfcTransFailed();
+  void resetMfcTransceiveFlag();
 };

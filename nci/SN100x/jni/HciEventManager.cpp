@@ -28,7 +28,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2019-2020 NXP
+*  Copyright 2019-2020, 2023 NXP
 *
 ******************************************************************************/
 #include "HciEventManager.h"
@@ -46,6 +46,7 @@ uint8_t HciEventManager::sEsePipe;
 uint8_t HciEventManager::sSimPipe;
 #if(NXP_EXTNS == TRUE)
 uint8_t HciEventManager::sSim2Pipe;
+uint8_t HciEventManager::sESimPipe;
 #endif
 
 using android::base::StringPrintf;
@@ -68,6 +69,7 @@ void HciEventManager::initialize(nfc_jni_native_data* native) {
 #else
   sSim2Pipe = (uint8_t)NfcConfig::getUnsigned(NAME_OFF_HOST_SIM2_PIPE_ID,
           OFF_HOST_DEFAULT_PIPE_ID);
+  sESimPipe = NfcConfig::getUnsigned(NAME_OFF_HOST_ESIM_PIPE_ID, 0x2B);
 #endif
   sEsePipe = NfcConfig::getUnsigned(NAME_OFF_HOST_ESE_PIPE_ID, 0x16);
   sSimPipe = NfcConfig::getUnsigned(NAME_OFF_HOST_SIM_PIPE_ID, 0x0A);
@@ -182,34 +184,43 @@ void HciEventManager::nfaHciCallback(tNFA_HCI_EVT event,
 #if(NXP_EXTNS == TRUE)
   } else if (eventData->rcvd_evt.pipe == sSim2Pipe) {
     evtSrc = "SIM2";
+  } else if (eventData->rcvd_evt.pipe == sESimPipe) {
+    evtSrc = "SIM3";
 #endif
   } else {
     LOG(WARNING) << "Incorrect Pipe Id";
     return;
   }
 
-  uint8_t* buff = eventData->rcvd_evt.p_evt_buf;
-  uint32_t buffLength = eventData->rcvd_evt.evt_len;
-  std::vector<uint8_t> event_buff(buff, buff + buffLength);
   // Check the event and check if it contains the AID
-  if (event == NFA_HCI_EVENT_RCVD_EVT &&
-      eventData->rcvd_evt.evt_code == NFA_HCI_EVT_TRANSACTION &&
-      buffLength > 3 && event_buff[0] == 0x81) {
-    int aidlen = event_buff[1];
-    std::vector<uint8_t> aid(event_buff.begin() + 2,
-                             event_buff.begin() + aidlen + 2);
-
-    int32_t berTlvStart = aidlen + 2 + 1;
-    int32_t berTlvLen = buffLength - berTlvStart;
-    std::vector<uint8_t> data;
-    if (berTlvLen > 0 && event_buff[2 + aidlen] == 0x82) {
-      std::vector<uint8_t> berTlv(event_buff.begin() + berTlvStart,
-                                  event_buff.end());
-      // BERTLV decoding here, to support extended data length for params.
-      data = getInstance().getDataFromBerTlv(berTlv);
-    }
-    getInstance().notifyTransactionListenersOfAid(aid, data, evtSrc);
+  uint8_t* event_buff = eventData->rcvd_evt.p_evt_buf;
+  uint32_t event_buff_len = eventData->rcvd_evt.evt_len;
+  if (event != NFA_HCI_EVENT_RCVD_EVT ||
+      eventData->rcvd_evt.evt_code != NFA_HCI_EVT_TRANSACTION ||
+      event_buff_len <= 3 || event_buff == nullptr || event_buff[0] != 0x81) {
+    LOG(WARNING) << "Invalid event";
+    return;
   }
+
+  uint32_t aid_len = event_buff[1];
+  if (aid_len >= (event_buff_len - 1)) {
+    android_errorWriteLog(0x534e4554, "181346545");
+    LOG(ERROR) << StringPrintf("error: aidlen(%d) is too big", aid_len);
+    return;
+  }
+
+  std::vector<uint8_t> aid(event_buff + 2, event_buff + aid_len + 2);
+  int32_t berTlvStart = aid_len + 2 + 1;
+  int32_t berTlvLen = event_buff_len - berTlvStart;
+  std::vector<uint8_t> data;
+  if (berTlvLen > 0 && event_buff[2 + aid_len] == 0x82) {
+    std::vector<uint8_t> berTlv(event_buff + berTlvStart,
+                                event_buff + event_buff_len);
+    // BERTLV decoding here, to support extended data length for params.
+    data = getInstance().getDataFromBerTlv(berTlv);
+  }
+
+  getInstance().notifyTransactionListenersOfAid(aid, data, evtSrc);
 }
 
 void HciEventManager::finalize() { mNativeData = NULL; }

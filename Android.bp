@@ -12,20 +12,24 @@ android_app {
         "nci/**/*.java",
         ":statslog-Nfc-java-gen",
     ],
+    uses_libs: ["com.nxp.nfc.nq"],
     platform_apis: true,
     certificate: "platform",
     jni_libs: ["libsn100nfc_nci_jni"],
     libs: ["com.nxp.nfc.nq"],
-    uses_libs: ["com.nxp.nfc.nq"],
     static_libs: [
+        "android.se.omapi-V1-java",
         "androidx.annotation_annotation",
         "androidx.appcompat_appcompat",
-	"com.google.android.material_material",
+        "com.google.android.material_material",
+        "android.hardware.secure_element-V1.0-java",
         "vendor.nxp.hardware.nfc-V2.0-java",
-        ],
+        "PlatformProperties",
+    ],
     optimize: {
         proguard_flags_files: ["proguard.flags"],
     },
+    jarjar_rules: "jarjar-rules.txt",
 }
 
 filegroup {
