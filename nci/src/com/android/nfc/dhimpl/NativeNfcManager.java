@@ -760,4 +760,9 @@ public class NativeNfcManager implements DeviceHost {
     public native int doGetSelectedUicc();
     @Override
     public native int setPreferredSimSlot(int uiccSlot);
+    // TZ secure zone notification reported from HAL to Disable NFC
+    private void notifyTZNfcSecureZoneReported() {
+        mListener.onTZNfcSecureZoneReported();
+    }
+
 }

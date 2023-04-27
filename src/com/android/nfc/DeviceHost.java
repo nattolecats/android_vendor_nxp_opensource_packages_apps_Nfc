@@ -101,6 +101,9 @@ public interface DeviceHost {
          * Notifies core generic error notification
          */
         void notifyCoreGenericError(int errorCode);
+
+        /** Notifies TZ Secure Zone Notification **/
+        public void onTZNfcSecureZoneReported();
     }
 
     public interface TagEndpoint {
