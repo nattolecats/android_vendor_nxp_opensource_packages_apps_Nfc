@@ -39,10 +39,11 @@ import android.app.ActivityManager;
 import android.content.ComponentName;
 import android.content.Context;
 import android.nfc.cardemulation.NfcFServiceInfo;
+import android.nfc.cardemulation.Utils;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemProperties;
 import android.os.UserHandle;
+import android.sysprop.NfcProperties;
 import android.util.Log;
 import android.util.proto.ProtoOutputStream;
 
@@ -54,7 +55,7 @@ import java.io.PrintWriter;
 
 public class EnabledNfcFServices implements com.android.nfc.ForegroundUtils.Callback {
     static final String TAG = "EnabledNfcFCardEmulationServices";
-    static final boolean DBG = SystemProperties.getBoolean("persist.nfc.debug_enabled", false);
+    static final boolean DBG = NfcProperties.debug_enabled().orElse(false);
 
     final Context mContext;
     final RegisteredNfcFServicesCache mNfcFServiceCache;
@@ -261,10 +262,12 @@ public class EnabledNfcFServices implements com.android.nfc.ForegroundUtils.Call
     void dumpDebug(ProtoOutputStream proto) {
         synchronized (mLock) {
             if (mForegroundComponent != null) {
-                 mForegroundComponent.dumpDebug(proto, EnabledNfcFServicesProto.FOREGROUND_COMPONENT);
+                Utils.dumpDebugComponentName(
+                        mForegroundComponent, proto, EnabledNfcFServicesProto.FOREGROUND_COMPONENT);
             }
             if (mForegroundRequested != null) {
-                 mForegroundRequested.dumpDebug(proto, EnabledNfcFServicesProto.FOREGROUND_REQUESTED);
+                Utils.dumpDebugComponentName(
+                        mForegroundRequested, proto, EnabledNfcFServicesProto.FOREGROUND_REQUESTED);
             }
             proto.write(EnabledNfcFServicesProto.ACTIVATED, mActivated);
             proto.write(EnabledNfcFServicesProto.COMPUTE_FG_REQUESTED, mComputeFgRequested);

@@ -42,6 +42,7 @@ import android.content.ServiceConnection;
 import android.nfc.cardemulation.ApduServiceInfo;
 import android.nfc.cardemulation.CardEmulation;
 import android.nfc.cardemulation.HostApduService;
+import android.nfc.cardemulation.Utils;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
@@ -50,8 +51,8 @@ import android.os.Message;
 import android.os.Messenger;
 import android.os.PowerManager;
 import android.os.RemoteException;
-import android.os.SystemProperties;
 import android.os.UserHandle;
+import android.sysprop.NfcProperties;
 import android.util.Log;
 import android.util.proto.ProtoOutputStream;
 
@@ -64,7 +65,7 @@ import java.util.ArrayList;
 
 public class HostEmulationManager {
     static final String TAG = "HostEmulationManager";
-    static final boolean DBG = SystemProperties.getBoolean("persist.nfc.debug_enabled", false);
+    static final boolean DBG = NfcProperties.debug_enabled().orElse(false);
 
     static final int STATE_IDLE = 0;
     static final int STATE_W4_SELECT = 1;
@@ -639,7 +640,8 @@ public class HostEmulationManager {
             mPaymentServiceName.dumpDebug(proto, HostEmulationManagerProto.PAYMENT_SERVICE_NAME);
         }
         if (mServiceBound) {
-            mServiceName.dumpDebug(proto, HostEmulationManagerProto.SERVICE_NAME);
+            Utils.dumpDebugComponentName(
+                    mServiceName, proto, HostEmulationManagerProto.SERVICE_NAME);
         }
     }
 }

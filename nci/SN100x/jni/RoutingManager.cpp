@@ -1,10 +1,4 @@
 /*
- * Copyright (c) 2016, The Linux Foundation. All rights reserved.
- * Not a Contribution.
- *
- * Copyright 2018-2021 NXP
- * The original Work has been changed by NXP.
- *
  * Copyright (C) 2013 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,6 +17,25 @@
 /*
  *  Manage the listen-mode routing table.
  */
+/******************************************************************************
+ *
+ *  The original Work has been changed by NXP.
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *  Copyright 2018-2021 NXP
+ *
+ ******************************************************************************/
 #include <android-base/stringprintf.h>
 #include <base/logging.h>
 #include <nativehelper/JNIHelp.h>
@@ -68,7 +81,7 @@ const JNINativeMethod RoutingManager::sMethods[] = {
      (void*)RoutingManager::
          com_android_nfc_cardemulation_doGetDefaultIsoDepRouteDestination}};
 
-static const int MAX_NUM_EE = 5;
+static const int MAX_NUM_EE = 6;
 // SCBR from host works only when App is in foreground
 static const uint8_t SYS_CODE_PWR_STATE_HOST = 0x01;
 #if (NXP_EXTNS != TRUE)
@@ -165,6 +178,9 @@ RoutingManager::RoutingManager()
       NfcConfig::getUnsigned(NAME_HOST_LISTEN_TECH_MASK,
                              NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_F);
 
+  mOffHostListenTechMask = NfcConfig::getUnsigned(
+      NAME_OFFHOST_LISTEN_TECH_MASK,
+      NFA_TECHNOLOGY_MASK_A | NFA_TECHNOLOGY_MASK_B | NFA_TECHNOLOGY_MASK_F);
 #if(NXP_EXTNS != TRUE)
   mDeinitializing = false;
   mEeInfoChanged = false;
@@ -892,6 +908,10 @@ tNFA_TECHNOLOGY_MASK RoutingManager::updateEeTechRouteSetting() {
         seTechMask |= NFA_TECHNOLOGY_MASK_F;
     }
 
+    // If OFFHOST_LISTEN_TECH_MASK exists,
+    // filter out the unspecified technologies
+    seTechMask &= mOffHostListenTechMask;
+
     DLOG_IF(INFO, nfc_debug_enabled)
         << StringPrintf("%s: seTechMask[%u]=0x%02x", fn, i, seTechMask);
 
@@ -1259,14 +1279,14 @@ void RoutingManager::nfcFCeCallback(uint8_t event,
   switch (event) {
     case NFA_CE_REGISTERED_EVT: {
       DLOG_IF(INFO, nfc_debug_enabled)
-          << StringPrintf("%s: registerd event notified", fn);
+          << StringPrintf("%s: registered event notified", fn);
       routingManager.mNfcFOnDhHandle = eventData->ce_registered.handle;
       SyncEventGuard guard(routingManager.mRoutingEvent);
       routingManager.mRoutingEvent.notifyOne();
     } break;
     case NFA_CE_DEREGISTERED_EVT: {
       DLOG_IF(INFO, nfc_debug_enabled)
-          << StringPrintf("%s: deregisterd event notified", fn);
+          << StringPrintf("%s: deregistered event notified", fn);
       SyncEventGuard guard(routingManager.mRoutingEvent);
       routingManager.mRoutingEvent.notifyOne();
     } break;
@@ -1539,8 +1559,8 @@ bool RoutingManager::setRoutingEntry(int type, int value, int route, int power)
     uint8_t screen_off_mask = 0x00;
     uint8_t screen_off_lock_mask = 0x00;
     uint8_t protocol_mask = 0x00;
-
-    ee_handle = ((route == 0x00) ? ROUTE_LOC_HOST_ID : ((route == 0x01) ? ROUTE_LOC_ESE_ID : getUiccRouteLocId(route)));
+    ee_handle = ((route == 0x00) ? ROUTE_LOC_HOST_ID : ((route == 0x01) ? ROUTE_LOC_ESE_ID :
+      ((route == SecureElement::EUICC_ID) ? ROUTE_LOC_EUICC_ID : getUiccRouteLocId(route))));
     if(ee_handle == NFA_HANDLE_INVALID )
     {
         DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: enter, handle:%x invalid", fn, ee_handle);
@@ -1824,7 +1844,8 @@ void RoutingManager::setEmptyAidEntry(int routeAndPowerState) {
         LOG(ERROR) << StringPrintf("%s: Invalid routeLoc. Return.", __func__);
         return;
     }
-    routeLoc = ((routeLoc == 0x00) ? ROUTE_LOC_HOST_ID : ((routeLoc == 0x01 ) ? ROUTE_LOC_ESE_ID : getUiccRouteLocId(routeLoc)));
+    routeLoc = ((routeLoc == 0x00) ? ROUTE_LOC_HOST_ID : ((routeLoc == 0x01 ) ? ROUTE_LOC_ESE_ID:
+        ((routeLoc == SecureElement::EUICC_ID) ? ROUTE_LOC_EUICC_ID : getUiccRouteLocId(routeLoc))));
     DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s: route %x",__func__,routeLoc);
 
     max_tech_mask = SecureElement::getInstance().getSETechnology(routeLoc);
@@ -1875,7 +1896,8 @@ tNFA_HANDLE RoutingManager::checkAndUpdateAltRoute(int& routeLoc) {
             __func__, fallBackOption, routeLoc);
     }
     if ((fallBackOption == ROUTE_ESE) && ((routeLoc == ROUTE_LOC_UICC1_ID_IDX)
-            || (routeLoc == ROUTE_LOC_UICC2_ID_IDX))) {
+            || (routeLoc == ROUTE_LOC_UICC2_ID_IDX)
+            || (routeLoc == SecureElement::EUICC_ID))) {
       DLOG_IF(INFO, nfc_debug_enabled)
             << StringPrintf("Default route not available");
       /*check if eSE exist*/
