@@ -29,6 +29,8 @@
     <string name="pair_no" msgid="5022308368904055020">"No"</string>
     <string name="tap_again_to_pay" msgid="5754988005412859897">"Vuelve a tocar para pagar con <xliff:g id="APP">%1$s</xliff:g>"</string>
     <string name="tap_again_to_complete" msgid="5423640945118279123">"Vuelve a tocar para completar con <xliff:g id="APP">%1$s</xliff:g>"</string>
+    <string name="tap_again_description" msgid="3019101527041529661">"Acerca el dispositivo al lector"</string>
+    <string name="appchooser_description" msgid="2554187931814833244">"Elige la aplicación para escanear"</string>
     <string name="transaction_failure" msgid="7828102078637936513">"No se ha podido completar esta transacción con <xliff:g id="APP">%1$s</xliff:g>."</string>
     <string name="could_not_use_app" msgid="8137587876138569083">"No se ha podido usar <xliff:g id="APP">%1$s</xliff:g>."</string>
     <string name="pay_with" msgid="5531545488795798945">"Pagar con"</string>
@@ -51,4 +53,6 @@
     <string name="tag_dispatch_failed" msgid="3562984995049738400">"No hay ninguna aplicación compatible con esta etiqueta NFC"</string>
     <string name="nfc_blocking_alert_title" msgid="1086172436984457085">"Es posible que el NFC esté bloqueado"</string>
     <string name="nfc_blocking_alert_message" msgid="7003156052570107490">"Toca para saber cómo solucionarlo."</string>
+    <string name="nfc_logging_alert_title" msgid="5300867034660942987">"Los datos de NFC se están registrando"</string>
+    <string name="nfc_logging_alert_message" msgid="1550187184825467942">"Toca para detener el registro."</string>
 </resources>

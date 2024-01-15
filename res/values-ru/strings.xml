@@ -29,6 +29,8 @@
     <string name="pair_no" msgid="5022308368904055020">"Нет"</string>
     <string name="tap_again_to_pay" msgid="5754988005412859897">"Чтобы использовать для оплаты приложение \"<xliff:g id="APP">%1$s</xliff:g>\", снова приблизьте телефон"</string>
     <string name="tap_again_to_complete" msgid="5423640945118279123">"Чтобы использовать приложение \"<xliff:g id="APP">%1$s</xliff:g>\", снова приблизьте телефон"</string>
+    <string name="tap_again_description" msgid="3019101527041529661">"Поднесите устройство к считывателю"</string>
+    <string name="appchooser_description" msgid="2554187931814833244">"Выберите приложение для сканирования"</string>
     <string name="transaction_failure" msgid="7828102078637936513">"Для этой операции нельзя использовать приложение \"<xliff:g id="APP">%1$s</xliff:g>\""</string>
     <string name="could_not_use_app" msgid="8137587876138569083">"Невозможно использовать приложение \"<xliff:g id="APP">%1$s</xliff:g>\""</string>
     <string name="pay_with" msgid="5531545488795798945">"Способ оплаты"</string>
@@ -51,4 +53,6 @@
     <string name="tag_dispatch_failed" msgid="3562984995049738400">"Для этой NFC-метки нет поддерживаемых приложений"</string>
     <string name="nfc_blocking_alert_title" msgid="1086172436984457085">"Функция NFC может быть заблокирована"</string>
     <string name="nfc_blocking_alert_message" msgid="7003156052570107490">"Нажмите, чтобы узнать, как устранить эту проблему."</string>
+    <string name="nfc_logging_alert_title" msgid="5300867034660942987">"Выполняется запись данных NFC"</string>
+    <string name="nfc_logging_alert_message" msgid="1550187184825467942">"Нажмите, чтобы остановить ее."</string>
 </resources>

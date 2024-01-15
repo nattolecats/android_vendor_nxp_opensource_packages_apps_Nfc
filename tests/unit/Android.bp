@@ -3,7 +3,7 @@ package {
 }
 
 android_test {
-    name: "snNfcNciInstrumentationTests",
+    name: "NqNfcNciUnitTests",
 
     certificate: "platform",
 
@@ -11,22 +11,36 @@ android_test {
         "android.test.runner",
         "android.test.base",
         "android.test.mock",
+        "com.nxp.nfc.nq",
     ],
 
     static_libs: [
         "androidx.test.core",
         "androidx.test.rules",
         "androidx.test.ext.junit",
-        "mockito-target",
+        "mockito-target-extended-minus-junit4",
         "truth-prebuilt",
+        "androidx.annotation_annotation",
+        "androidx.appcompat_appcompat",
+        "com.google.android.material_material",
+    ],
+
+    jni_libs: [
+        // Required for ExtendedMockito
+        "libdexmakerjvmtiagent",
+        "libstaticjvmtiagent",
     ],
 
     // Include all test java files.
-    srcs: ["src/**/*.java"],
+    srcs: [
+      "src/**/*.java",
+      ":nqnfc-sources",
+    ],
+    uses_libs: ["com.nxp.nfc.nq"],
 
     platform_apis: true,
 
     test_suites: ["device-tests"],
 
-    instrumentation_for: "NfcNci",
+    instrumentation_for: "NQNfcNci",
 }

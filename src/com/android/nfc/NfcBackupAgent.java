@@ -18,9 +18,9 @@ package com.android.nfc;
 
 import android.app.backup.BackupAgentHelper;
 import android.app.backup.SharedPreferencesBackupHelper;
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.nfc.NfcAdapter;
-import android.content.Context;
 
 public class NfcBackupAgent extends BackupAgentHelper {
     // Backup identifier
@@ -40,13 +40,6 @@ public class NfcBackupAgent extends BackupAgentHelper {
         if (nfcAdapter != null) {
             SharedPreferences prefs = getSharedPreferences(NfcService.PREF,
                 Context.MODE_MULTI_PROCESS);
-            if (prefs.getBoolean(NfcService.PREF_NDEF_PUSH_ON,
-                    NfcService.NDEF_PUSH_ON_DEFAULT)) {
-                nfcAdapter.enableNdefPush();
-            } else {
-                nfcAdapter.disableNdefPush();
-            }
-
             if (prefs.getBoolean(NfcService.PREF_NFC_ON,
                     NfcService.NFC_ON_DEFAULT)) {
                 nfcAdapter.enable();

@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2021 NXP
+ *  Copyright 2021-2022 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -23,4 +23,6 @@ public class NativeExtFieldDetectManager {
   public native int startExtendedFieldDetectMode(int detectionTimeout);
 
   public native int stopExtendedFieldDetectMode();
+
+  public native int startCardEmulation();
 }
