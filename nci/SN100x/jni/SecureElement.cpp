@@ -1,26 +1,20 @@
 /******************************************************************************
- *
- *  Copyright (c) 2016, The Linux Foundation. All rights reserved.
- *  Not a Contribution.
- *
- *  Copyright (C) 2018-2021 NXP
- *
- *  Copyright (C) 2012 The Android Open Source Project
- *
- *  Licensed under the Apache License, Version 2.0 (the "License");
- *  you may not use this file except in compliance with the License.
- *  You may obtain a copy of the License at
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- *
- ******************************************************************************/
-
+*
+*  Licensed under the Apache License, Version 2.0 (the "License");
+*  you may not use this file except in compliance with the License.
+*  You may obtain a copy of the License at
+*
+*  http://www.apache.org/licenses/LICENSE-2.0
+*
+*  Unless required by applicable law or agreed to in writing, software
+*  distributed under the License is distributed on an "AS IS" BASIS,
+*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+*  See the License for the specific language governing permissions and
+*  limitations under the License.
+*
+*  Copyright 2018-2023 NXP
+*
+******************************************************************************/
 
 #include "SecureElement.h"
 #include <nativehelper/ScopedLocalRef.h>
@@ -35,6 +29,7 @@
 #include "RoutingManager.h"
 #include "HciEventManager.h"
 #include "MposManager.h"
+#include "SyncEvent.h"
 #if (NXP_SRD == TRUE)
 #include "SecureDigitization.h"
 #endif
@@ -44,11 +39,13 @@ SecureElement SecureElement::sSecElem;
 const char* SecureElement::APP_NAME = "nfc_jni";
 extern bool nfc_debug_enabled;
 extern bool isDynamicUiccEnabled;
+#define ONE_SECOND_MS 1000
 
 namespace android
 {
 extern void startRfDiscovery (bool isStart);
 extern tNFA_STATUS NxpNfc_Write_Cmd_Common(uint8_t retlen, uint8_t* buffer);
+extern bool nfcManager_isNfcDisabling();
 }
 uint8_t  SecureElement::mStaticPipeProp;
 /*******************************************************************************
@@ -234,6 +231,10 @@ jint SecureElement::getGenericEseId(tNFA_HANDLE handle) {
     else if (handle == (EE_HANDLE_0xF9 & ~NFA_HANDLE_GROUP_EE)) //UICC2 - 0x04
     {
         ret = UICC3_ID;
+    }
+    else if (handle == (EE_HANDLE_0xF5 & ~NFA_HANDLE_GROUP_EE)) //EUICC - 0xC1
+    {
+        ret = EUICC_ID;
     }
     LOG(INFO) << StringPrintf("%s: exit; ESE-Generic-ID = 0x%02X", fn, ret);
     return ret;
@@ -491,7 +492,6 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
                                    tNFA_HCI_EVT_DATA* eventData) {
     static const char fn [] = "SecureElement::nfaHciCallback";
     LOG(INFO) << StringPrintf("%s: event=0x%X", fn, event);
-    int evtSrc = 0xFF;
 
     switch (event)
     {
@@ -561,7 +561,11 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
         break;
 
     case NFA_HCI_EVENT_SENT_EVT:
-        LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_SENT_EVT; status=0x%X", fn, eventData->evt_sent.status);
+        {
+          SyncEventGuard guard(sSecElem.mHciSendEvent);
+          sSecElem.mHciSendEvent.notifyOne();
+          LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_SENT_EVT; status=0x%X", fn, eventData->evt_sent.status);
+        }
         break;
 
     case NFA_HCI_RSP_RCVD_EVT: //response received from secure element
@@ -631,17 +635,17 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
         if(eventData->rcvd_evt.pipe == 0x0A) //UICC
         {
             LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_RCVD_EVT; source UICC",fn);
-            evtSrc = SecureElement::getInstance().getGenericEseId(SecureElement::getInstance().EE_HANDLE_0xF4 & ~NFA_HANDLE_GROUP_EE); //UICC
+            SecureElement::getInstance().getGenericEseId(SecureElement::getInstance().EE_HANDLE_0xF4 & ~NFA_HANDLE_GROUP_EE); //UICC
         }
         else if(eventData->rcvd_evt.pipe == 0x16) //ESE
         {
             LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_RCVD_EVT; source ESE",fn);
-            evtSrc = SecureElement::getInstance().getGenericEseId(EE_HANDLE_0xF3 & ~NFA_HANDLE_GROUP_EE); //ESE
+            SecureElement::getInstance().getGenericEseId(EE_HANDLE_0xF3 & ~NFA_HANDLE_GROUP_EE); //ESE
         }
         else if(eventData->rcvd_evt.pipe == CONNECTIVITY_PIPE_ID_UICC3) //UICC3
         {
             LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_RCVD_EVT; source UICC3",fn);
-            evtSrc = SecureElement::getInstance().getGenericEseId(SecureElement::getInstance().EE_HANDLE_0xF9 & ~NFA_HANDLE_GROUP_EE); //UICC
+            SecureElement::getInstance().getGenericEseId(SecureElement::getInstance().EE_HANDLE_0xF9 & ~NFA_HANDLE_GROUP_EE); //UICC
         }
         else if (((eventData->rcvd_evt.evt_code == NFA_HCI_EVT_ATR))
                 &&(eventData->rcvd_evt.pipe == mStaticPipeProp))
@@ -723,7 +727,6 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
         }
         else if(eventData->rcvd_evt.evt_code == NFA_HCI_EVT_INIT_COMPLETED) {
             LOG(INFO) << StringPrintf("%s: NFA_HCI_EVT_INIT_COMPLETED; received", fn);
-            SecureElement::getInstance().notifySeInitialized();
         }
         else if (eventData->rcvd_evt.evt_code == NFA_HCI_EVT_CONNECTIVITY)
         {
@@ -751,6 +754,7 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
           LOG(INFO) << StringPrintf("%s: NFA_HCI_INIT_COMPLETED; received", fn);
           SyncEventGuard guard (sSecElem.mEERecoveryComplete);
           sSecElem.mEERecoveryComplete.notifyOne();
+          SecureElement::getInstance().notifySeInitialized();
           break;
         }
 #if (NXP_SRD == TRUE)
@@ -780,7 +784,7 @@ bool SecureElement::notifySeInitialized() {
             << StringPrintf("%s: jni env is null", fn);
         return false;
     }
-    e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifySeInitialized);
+    e->CallVoidMethod (mNativeData->manager, android::gCachedNfcManagerNotifyEeUpdated);
     CHECK(!e->ExceptionCheck());
     return true;
 }
@@ -799,142 +803,122 @@ bool SecureElement::notifySeInitialized() {
 ** Returns:         True if ok.
 **
 *******************************************************************************/
-bool SecureElement::transceive (uint8_t* xmitBuffer, int32_t xmitBufferSize, uint8_t* recvBuffer,
-        int32_t recvBufferMaxSize, int32_t& recvBufferActualSize, int32_t timeoutMillisec)
-{
+bool SecureElement::transceive(uint8_t* xmitBuffer, int32_t xmitBufferSize,
+                               uint8_t* recvBuffer, int32_t recvBufferMaxSize,
+                               int32_t& recvBufferActualSize,
+                               int32_t timeoutMillisec, tNFA_HANDLE eeHandle) {
+  static const char fn[] = "SecureElement::transceive";
+  tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
+  bool isSuccess = false;
+  mTransceiveWaitOk = false;
+  mTransceiveStatus = NFA_STATUS_OK;
+  uint8_t newSelectCmd[NCI_MAX_AID_LEN + 10];
+  isSuccess = false;
 
+  // Check if we need to replace an "empty" SELECT command.
+  // 1. Has there been a AID configured, and
+  // 2. Is that AID a valid length (i.e 16 bytes max), and
+  // 3. Is the APDU at least 4 bytes (for header), and
+  // 4. Is INS == 0xA4 (SELECT command), and
+  // 5. Is P1 == 0x04 (SELECT by AID), and
+  // 6. Is the APDU len 4 or 5 bytes.
+  //
+  // Note, the length of the configured AID is in the first
+  //   byte, and AID starts from the 2nd byte.
+  if (mAidForEmptySelect[0]                          // 1
+      && (mAidForEmptySelect[0] <= NCI_MAX_AID_LEN)  // 2
+      && (xmitBufferSize >= 4)                       // 3
+      && (xmitBuffer[1] == 0xA4)                     // 4
+      && (xmitBuffer[2] == 0x04)                     // 5
+      && (xmitBufferSize <= 5))                      // 6
+  {
+    uint8_t idx = 0;
 
-    static const char fn [] = "SecureElement::transceive";
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
-    bool isSuccess = false;
-    mTransceiveWaitOk = false;
-    mTransceiveStatus = NFA_STATUS_OK;
-    uint8_t newSelectCmd[NCI_MAX_AID_LEN + 10];
-    isSuccess                  = false;
+    // Copy APDU command header from the input buffer.
+    memcpy(&newSelectCmd[0], &xmitBuffer[0], 4);
+    idx = 4;
 
-    // Check if we need to replace an "empty" SELECT command.
-    // 1. Has there been a AID configured, and
-    // 2. Is that AID a valid length (i.e 16 bytes max), and
-    // 3. Is the APDU at least 4 bytes (for header), and
-    // 4. Is INS == 0xA4 (SELECT command), and
-    // 5. Is P1 == 0x04 (SELECT by AID), and
-    // 6. Is the APDU len 4 or 5 bytes.
-    //
-    // Note, the length of the configured AID is in the first
-    //   byte, and AID starts from the 2nd byte.
-    if (mAidForEmptySelect[0]                           // 1
-                           && (mAidForEmptySelect[0] <= NCI_MAX_AID_LEN)   // 2
-                           && (xmitBufferSize >= 4)                        // 3
-                           && (xmitBuffer[1] == 0xA4)                      // 4
-                           && (xmitBuffer[2] == 0x04)                      // 5
-                           && (xmitBufferSize <= 5))                       // 6
-    {
-        uint8_t idx = 0;
+    // Set the Lc value to length of the new AID
+    newSelectCmd[idx++] = mAidForEmptySelect[0];
 
-        // Copy APDU command header from the input buffer.
-        memcpy(&newSelectCmd[0], &xmitBuffer[0], 4);
-        idx = 4;
+    // Copy the AID
+    memcpy(&newSelectCmd[idx], &mAidForEmptySelect[1], mAidForEmptySelect[0]);
+    idx += mAidForEmptySelect[0];
 
-        // Set the Lc value to length of the new AID
-        newSelectCmd[idx++] = mAidForEmptySelect[0];
+    // If there is an Le (5th byte of APDU), add it to the end.
+    if (xmitBufferSize == 5) newSelectCmd[idx++] = xmitBuffer[4];
 
-        // Copy the AID
-        memcpy(&newSelectCmd[idx], &mAidForEmptySelect[1], mAidForEmptySelect[0]);
-        idx += mAidForEmptySelect[0];
+    // Point to the new APDU
+    xmitBuffer = &newSelectCmd[0];
+    xmitBufferSize = idx;
 
-        // If there is an Le (5th byte of APDU), add it to the end.
-        if (xmitBufferSize == 5)
-            newSelectCmd[idx++] = xmitBuffer[4];
-
-        // Point to the new APDU
-        xmitBuffer = &newSelectCmd[0];
-        xmitBufferSize = idx;
-
-        LOG(INFO) << StringPrintf("%s: Empty AID SELECT cmd detected, substituting AID from config file, new length=%d", fn, idx);
+    LOG(INFO) << StringPrintf(
+        "%s: Empty AID SELECT cmd detected, substituting AID from config file, "
+        "new length=%d",
+        fn, idx);
+  }
+  {
+    SyncEventGuard guard(mTransceiveEvent);
+    if (!mIsWiredModeOpen) {
+      return isSuccess;
     }
+    mActualResponseSize = 0;
+    memset(mResponseData, 0, sizeof(mResponseData));
+    nfaStat = NFA_HciSendApdu(mNfaHciHandle, mActiveEeHandle, xmitBufferSize,
+                              xmitBuffer, sizeof(mResponseData), mResponseData,
+                              timeoutMillisec);
 
-    {
-        SyncEventGuard guard (mTransceiveEvent);
-        mActualResponseSize = 0;
-        memset (mResponseData, 0, sizeof(mResponseData));
-        nfaStat = NFA_HciSendApdu (mNfaHciHandle, mActiveEeHandle, xmitBufferSize, xmitBuffer, sizeof(mResponseData), mResponseData, timeoutMillisec);
-
-        if (nfaStat == NFA_STATUS_OK)
-        {
-            mTransceiveEvent.wait ();
-        }
-        else
-        {
-            LOG(ERROR) << StringPrintf("%s: fail send data; error=0x%X", fn, nfaStat);
-            goto TheEnd;
-        }
+    if (nfaStat == NFA_STATUS_OK) {
+      mTransceiveEvent.wait();
+    } else {
+      LOG(ERROR) << StringPrintf("%s: fail send data; error=0x%X", fn, nfaStat);
+      goto TheEnd;
     }
-    if(mTransceiveStatus == NFA_STATUS_HCI_WTX_TIMEOUT)
-    {
-        LOG(ERROR) << StringPrintf("%s:timeout 1 %x",fn ,mTransceiveStatus);
-        mAbortEventWaitOk = false;
-        SyncEventGuard guard (mAbortEvent);
-        nfaStat = NFA_HciAbortApdu(mNfaHciHandle,mActiveEeHandle,timeoutMillisec);
-        if (nfaStat == NFA_STATUS_OK)
-        {
-            mAbortEvent.wait();
-        }
-        if(mAbortEventWaitOk == false)
-        {
-            setNfccPwrConfig(NFCC_DECIDES);
-
-            SecEle_Modeset(NFCEE_DISABLE);
-            usleep(1000 * 1000);
-
-            setNfccPwrConfig(POWER_ALWAYS_ON|COMM_LINK_ACTIVE);
-            SecEle_Modeset(NFCEE_ENABLE);
-            usleep(200 * 1000);
-
-            LOG(INFO) << StringPrintf("%s: ABORT no response; power cycle  ", fn);
-        }
-    } else if(mTransceiveStatus == NFA_STATUS_TIMEOUT)
-    {
-        LOG(ERROR) << StringPrintf("%s: timeout 2 %x",fn ,mTransceiveStatus);
-        //Try Mode Set on/off
-        setNfccPwrConfig(POWER_ALWAYS_ON);
-        SecEle_Modeset(NFCEE_DISABLE);
-
-        usleep(1000 * 1000);
-
-        setNfccPwrConfig(POWER_ALWAYS_ON|COMM_LINK_ACTIVE);
-        SecEle_Modeset(NFCEE_ENABLE);
-        sendEvent(SecureElement::EVT_END_OF_APDU_TRANSFER);
-        {
-            tNFA_EE_INFO *pEE = findEeByHandle (EE_HANDLE_0xF3);
-            uint8_t eeStatus = 0x00;
-            if (pEE)
-            {
-              eeStatus = pEE->ee_status;
-              LOG(INFO) << StringPrintf("%s: NFA_EE_MODE_SET_EVT reset status; (0x%04x)", fn, pEE->ee_status);
-              if(eeStatus != NFA_EE_STATUS_ACTIVE)
-              {
-                  setNfccPwrConfig(NFCC_DECIDES);
-
-                  SecEle_Modeset(NFCEE_DISABLE);
-                  usleep(200 * 1000);
-
-                  setNfccPwrConfig(POWER_ALWAYS_ON|COMM_LINK_ACTIVE);
-                  SecEle_Modeset(NFCEE_ENABLE);
-                  usleep(200 * 1000);
-                  LOG(INFO) << StringPrintf("%s: NFA_EE_MODE_SET_EVT; power cycle complete ", fn);
-              }
-            }
-        }
+  }
+  if (mTransceiveStatus == NFA_STATUS_HCI_WTX_TIMEOUT) {
+    LOG(ERROR) << StringPrintf("%s:timeout 1 %x", fn, mTransceiveStatus);
+    mAbortEventWaitOk = false;
+    SyncEventGuard guard(mAbortEvent);
+    nfaStat = NFA_HciAbortApdu(mNfaHciHandle, mActiveEeHandle, timeoutMillisec);
+    if (nfaStat == NFA_STATUS_OK) {
+      mAbortEvent.wait();
     }
-        if (mActualResponseSize > recvBufferMaxSize)
-            recvBufferActualSize = recvBufferMaxSize;
-        else
-            recvBufferActualSize = mActualResponseSize;
+    if ((mAbortEventWaitOk == false) && mIsWiredModeOpen &&
+        (android::nfcManager_isNfcDisabling() != true)) {
+      handleTransceiveTimeout(NFCC_DECIDES);
 
-        memcpy (recvBuffer, mResponseData, recvBufferActualSize);
-     isSuccess = true;
-        TheEnd:
-     return (isSuccess);
+      LOG(INFO) << StringPrintf("%s: ABORT no response; power cycle  ", fn);
+    }
+  } else if (mTransceiveStatus == NFA_STATUS_TIMEOUT) {
+    LOG(ERROR) << StringPrintf("%s: timeout 2 %x", fn, mTransceiveStatus);
+    // Try Mode Set on/off
+    handleTransceiveTimeout(POWER_ALWAYS_ON);
+    sendEvent(SecureElement::EVT_END_OF_APDU_TRANSFER);
+    {
+      tNFA_EE_INFO* pEE = findEeByHandle(eeHandle);
+      uint8_t eeStatus = 0x00;
+      if (pEE) {
+        eeStatus = pEE->ee_status;
+        LOG(INFO) << StringPrintf(
+            "%s: NFA_EE_MODE_SET_EVT reset status; (0x%04x)", fn,
+            pEE->ee_status);
+        if (eeStatus != NFA_EE_STATUS_ACTIVE) {
+          handleTransceiveTimeout(NFCC_DECIDES);
+          LOG(INFO) << StringPrintf(
+              "%s: NFA_EE_MODE_SET_EVT; power cycle complete ", fn);
+        }
+      }
+    }
+  }
+  if (mActualResponseSize > recvBufferMaxSize)
+    recvBufferActualSize = recvBufferMaxSize;
+  else
+    recvBufferActualSize = mActualResponseSize;
+
+  memcpy(recvBuffer, mResponseData, recvBufferActualSize);
+  isSuccess = true;
+TheEnd:
+  return (isSuccess);
 }
 
 /*******************************************************************************
@@ -978,6 +962,11 @@ jintArray SecureElement::getActiveSecureElementList (JNIEnv* e)
             seId = getGenericEseId(EE_HANDLE_0xF4 & ~NFA_HANDLE_GROUP_EE);
         }
 
+        if (nfcee_handle[i] == EE_HANDLE_0xF5 &&
+            nfcee_status[i] == NFC_NFCEE_STATUS_ACTIVE) {
+          seId = getGenericEseId(EE_HANDLE_0xF5 & ~NFA_HANDLE_GROUP_EE);
+        }
+
         if(nfcee_handle[i] == EE_HANDLE_0xF8 && nfcee_status[i] == NFC_NFCEE_STATUS_ACTIVE)
         {
             seId = getGenericEseId(EE_HANDLE_0xF8 & ~NFA_HANDLE_GROUP_EE);
@@ -1001,54 +990,35 @@ jintArray SecureElement::getActiveSecureElementList (JNIEnv* e)
 bool SecureElement::activate (jint seID)
 {
     static const char fn [] = "SecureElement::activate";
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
-    int numActivatedEe = 0;
-
     tNFA_HANDLE handle = getEseHandleFromGenericId(seID);
+    uint8_t ActivePipeId = getGateAndPipeList(handle);
 
     LOG(INFO) << StringPrintf("%s: enter handle=0x%X, seID=0x%X", fn, handle,seID);
-
     // Get Fresh EE info if needed.
-    if (! getEeInfo())
-    {
-        LOG(ERROR) << StringPrintf("%s: no EE info", fn);
-        return false;
-    }
-    if(SecureElement::getInstance().getGateAndPipeList() != SMX_PIPE_ID)
+    if (!getEeInfo()) {
+      LOG(ERROR) << StringPrintf("%s: no EE info", fn);
       return false;
+    }
+    if ((seID == ESE_ID && ActivePipeId != SMX_ESE_PIPE_ID) ||
+        (seID == EUICC_ID && ActivePipeId != SMX_EUICC_PIPE_ID)) {
+      LOG(ERROR) << StringPrintf("%s: Pipe is not created", fn);
+      return false;
+    }
 
-    //activate every discovered secure element
     for (int index=0; index < mActualNumEe; index++)
     {
         tNFA_EE_INFO& eeItem = mEeInfo[index];
-
-        if (eeItem.ee_handle == EE_HANDLE_0xF3)
-        {
-            if (eeItem.ee_status != NFC_NFCEE_STATUS_INACTIVE)
-            {
-                LOG(INFO) << StringPrintf("%s: h=0x%X already activated", fn, eeItem.ee_handle);
-                numActivatedEe++;
-                continue;
-            }
-
-            {
-                LOG(INFO) << StringPrintf("%s: set EE mode activate; h=0x%X", fn, eeItem.ee_handle);
-                if ((nfaStat = SecElem_EeModeSet (eeItem.ee_handle, NFA_EE_MD_ACTIVATE)) == NFA_STATUS_OK)
-                {
-                    if (eeItem.ee_status == NFC_NFCEE_STATUS_ACTIVE)
-                        numActivatedEe++;
-                    if(eeItem.ee_handle == EE_HANDLE_0xF3)
-                    {
-                        SyncEventGuard guard (SecureElement::getInstance().mModeSetNtf);
-                        if(SecureElement::getInstance().mModeSetNtf.wait(500) == false)
-                        {
-                            LOG(ERROR) << StringPrintf("%s: timeout waiting for setModeNtf", __func__);
-                        }
-                    }
-                }
-                else
-                    LOG(ERROR) << StringPrintf("%s: NFA_EeModeSet failed; error=0x%X", fn, nfaStat);
-            }
+        if (eeItem.ee_handle == handle) {
+          if (eeItem.ee_status != NFC_NFCEE_STATUS_INACTIVE) {
+            LOG(INFO) << StringPrintf("%s: h=0x%X already activated", fn,
+                                      handle);
+            continue;
+          }
+          LOG(INFO) << StringPrintf("%s: set EE mode activate; h=0x%X", fn,
+                                    handle);
+          if (NFA_STATUS_OK != SecElem_EeModeSet(handle, NFA_EE_MD_ACTIVATE)) {
+            LOG(ERROR) << StringPrintf("%s: SecElem_EeModeSet failed;", fn);
+          }
         }
     } //for
 
@@ -1064,73 +1034,54 @@ bool SecureElement::activate (jint seID)
 **
 ** Function:        deactivate
 **
-** Description:     Turn off the secure element.
-**                  seID: ID of secure element; 0xF3 or 0xF4.
+** Description:     Deactivate secure element activated in mActiveEeHandle.
+**                  seID: ID of secure element; 0xF3, 0xF4 or 0xF5.
 **
 ** Returns:         True if ok.
 **
 *******************************************************************************/
-bool SecureElement::deactivate (jint seID)
-{
-    static const char fn [] = "SecureElement::deactivate";
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
-    bool retval = false;
+bool SecureElement::deactivate() {
+  static const char fn[] = "SecureElement::deactivate";
+  bool retval = false;
 
-    LOG(INFO) << StringPrintf("%s: enter; seID=0x%X, mActiveEeHandle=0x%X", fn, seID, mActiveEeHandle);
+  LOG(INFO) << StringPrintf("%s: enter; mActiveEeHandle=0x%X", fn,
+                            mActiveEeHandle);
 
-    tNFA_HANDLE handle = getEseHandleFromGenericId(seID);
+  if (!mIsInit || mActiveEeHandle == NFA_HANDLE_INVALID) {
+    LOG(ERROR) << StringPrintf("%s: not initialized", fn);
+    goto TheEnd;
+  }
 
-    LOG(INFO) << StringPrintf("%s: handle=0x%X", fn, handle);
-
-    if (!mIsInit)
-    {
-        LOG(ERROR) << StringPrintf("%s: not init", fn);
-        goto TheEnd;
+  // deactivate secure element
+  for (int index = 0; index < mActualNumEe; index++) {
+    tNFA_EE_INFO& eeItem = mEeInfo[index];
+    if (eeItem.ee_handle == mActiveEeHandle &&
+        ((eeItem.ee_handle == EE_HANDLE_0xF3) ||
+         (eeItem.ee_handle == EE_HANDLE_0xF4) ||
+         (eeItem.ee_handle == EE_HANDLE_0xF5) ||
+         (eeItem.ee_handle == EE_HANDLE_0xF8) ||
+         (eeItem.ee_handle == EE_HANDLE_0xF9))) {
+      if (eeItem.ee_status == NFC_NFCEE_STATUS_INACTIVE) {
+        LOG(INFO) << StringPrintf("%s: h=0x%X already deactivated", fn,
+                                  eeItem.ee_handle);
+        break;
+      }
+      LOG(INFO) << StringPrintf("%s: set EE mode activate; h=0x%X", fn,
+                                eeItem.ee_handle);
+      if (NFA_STATUS_OK ==
+          SecElem_EeModeSet(eeItem.ee_handle, NFA_EE_MD_DEACTIVATE)) {
+        LOG(INFO) << StringPrintf("%s: ee_status =0x%X", fn, eeItem.ee_status);
+        if (eeItem.ee_status == NFC_NFCEE_STATUS_INACTIVE) retval = true;
+      } else
+        LOG(ERROR) << StringPrintf("%s: SecElem_EeModeSet failed", fn);
     }
+  }  // for
 
-    if (seID == NFA_HANDLE_INVALID)
-    {
-        LOG(ERROR) << StringPrintf("%s: invalid EE handle", fn);
-        goto TheEnd;
-    }
-
-    mActiveEeHandle = NFA_HANDLE_INVALID;
-
-    //deactivate secure element
-    for (int index=0; index < mActualNumEe; index++)
-    {
-        tNFA_EE_INFO& eeItem = mEeInfo[index];
-
-        if (eeItem.ee_handle == handle &&
-                ((eeItem.ee_handle == EE_HANDLE_0xF3) || (eeItem.ee_handle == EE_HANDLE_0xF4) ||
-                        (eeItem.ee_handle == EE_HANDLE_0xF8)||
-                        (eeItem.ee_handle == EE_HANDLE_0xF9))) {
-            if (eeItem.ee_status == NFC_NFCEE_STATUS_INACTIVE)
-            {
-                LOG(INFO) << StringPrintf("%s: h=0x%X already deactivated", fn, eeItem.ee_handle);
-                break;
-            }
-
-            {
-                LOG(INFO) << StringPrintf("%s: set EE mode activate; h=0x%X", fn, eeItem.ee_handle);
-                if ((nfaStat = SecElem_EeModeSet (eeItem.ee_handle, NFA_EE_MD_DEACTIVATE)) == NFA_STATUS_OK)
-                {
-                    LOG(INFO) << StringPrintf("%s: eeItem.ee_status =0x%X  NFC_NFCEE_STATUS_INACTIVE = %x", fn, eeItem.ee_status, NFC_NFCEE_STATUS_INACTIVE);
-                    if (eeItem.ee_status == NFC_NFCEE_STATUS_INACTIVE)
-                    {
-                        LOG(ERROR) << StringPrintf("%s: NFA_EeModeSet success; status=0x%X", fn, nfaStat);
-                        retval = true;
-                    }
-                }
-                else
-                    LOG(ERROR) << StringPrintf("%s: NFA_EeModeSet failed; error=0x%X", fn, nfaStat);
-            }
-        }
-    } //for
+  mActiveEeHandle = NFA_HANDLE_INVALID;
 
 TheEnd:
-    LOG(INFO) << StringPrintf("%s: exit; ok=%u", fn, retval);
-    return retval;
+  LOG(INFO) << StringPrintf("%s: exit; %s", fn, retval ? "Success" : "Failed");
+  return retval;
 }
 /*******************************************************************************
  **
@@ -1152,7 +1103,7 @@ tNFA_STATUS SecureElement::SecElem_EeModeSet(uint16_t handle, uint8_t mode)
     {
       sSecElem.mEeSetModeEvent.wait ();
     }
-
+    LOG(INFO) << StringPrintf("%s: Status = %d", __func__, stat);
     return stat;
 }
 /*******************************************************************************
@@ -1224,7 +1175,7 @@ void SecureElement::notifyModeSet (tNFA_HANDLE eeHandle, bool success, tNFA_EE_S
 **
 ** Function:        getAtr
 **
-** Description:     GetAtr response from the connected eSE
+** Description:     GetAtr response from the connected EE(eSE or eUICC)
 **
 ** Returns:         Returns True if success
 **
@@ -1260,7 +1211,7 @@ bool SecureElement::apduGateReset(jint seID, uint8_t* recvBuffer, int32_t *recvB
       {
         LOG(INFO) << StringPrintf("%s (EVT_ABORT) response timeout", fn);
         LOG(INFO) << StringPrintf("%s Perform NFCEE recovery", fn);
-        if(!doNfcee_Session_Reset())
+        if(!doNfcee_Session_Reset(mActiveEeHandle))
         {
           nfaStat = NFA_STATUS_FAILED;
           LOG(INFO) << StringPrintf("%s recovery failed", fn);
@@ -1281,11 +1232,11 @@ bool SecureElement::apduGateReset(jint seID, uint8_t* recvBuffer, int32_t *recvB
       else if(mAtrStatus == NFA_STATUS_HCI_WTX_TIMEOUT)
       {
         LOG(INFO) << StringPrintf("%s MAX_WTX limit reached, eSE power recycle", fn);
-        setNfccPwrConfig(NFCC_DECIDES);
-        SecEle_Modeset(NFCEE_DISABLE);
+        setNfccPwrConfig(NFCC_DECIDES, mActiveEeHandle);
+        SecEle_Modeset(NFCEE_DISABLE, mActiveEeHandle);
         usleep(50 * 1000);
-        setNfccPwrConfig(POWER_ALWAYS_ON|COMM_LINK_ACTIVE);
-        SecEle_Modeset(NFCEE_ENABLE);
+        setNfccPwrConfig(POWER_ALWAYS_ON|COMM_LINK_ACTIVE, mActiveEeHandle);
+        SecEle_Modeset(NFCEE_ENABLE, mActiveEeHandle);
         nfaStat = NFA_STATUS_OK;
       }
       if((nfaStat == NFA_STATUS_OK) && (mErrorRecovery == true))
@@ -1320,12 +1271,12 @@ bool SecureElement::apduGateReset(jint seID, uint8_t* recvBuffer, int32_t *recvB
 **
 ** Function:        doNfcee_Session_Reset
 **
-** Description:     Perform NFcee session reset & recovery
+** Description:     Perform EE(eSE or eUICC) session reset & recovery
 **
 ** Returns:         Returns True if success
 **
 *******************************************************************************/
-bool SecureElement::doNfcee_Session_Reset()
+bool SecureElement::doNfcee_Session_Reset(tNFA_HANDLE mActiveEeHandle)
 {
   tNFA_STATUS status = NFA_STATUS_FAILED;
   static const char fn[] = " SecureElement::doNfcee_Session_Reset";
@@ -1342,14 +1293,14 @@ bool SecureElement::doNfcee_Session_Reset()
     if(setNfccPwrConfig(POWER_ALWAYS_ON) == NFA_STATUS_OK)
     {
       LOG(INFO) << StringPrintf("%s Nfcee session PWRLNK 01", fn);
-      if(SecEle_Modeset(NFCEE_DISABLE))
+      if(SecEle_Modeset(NFCEE_DISABLE, mActiveEeHandle))
       {
         LOG(INFO) << StringPrintf("%s Nfcee session mode set off", fn);
         usleep(100 * 1000);
-        if(setNfccPwrConfig(POWER_ALWAYS_ON|COMM_LINK_ACTIVE) == NFA_STATUS_OK)
+        if(setNfccPwrConfig(POWER_ALWAYS_ON|COMM_LINK_ACTIVE, mActiveEeHandle) == NFA_STATUS_OK)
         {
           LOG(INFO) << StringPrintf("%s Nfcee session PWRLNK 03", fn);
-          if(SecEle_Modeset(NFCEE_ENABLE))
+          if(SecEle_Modeset(NFCEE_ENABLE, mActiveEeHandle))
           {
             usleep(100 * 1000);
             LOG(INFO) << StringPrintf("%s Nfcee session mode set on", fn);
@@ -1404,22 +1355,18 @@ bool SecureElement::getAtr(uint8_t* recvBuffer, int32_t *recvBufferSize)
 ** Returns:         True if ok.
 **
 *******************************************************************************/
-bool SecureElement::SecEle_Modeset(uint8_t type)
-{
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
-    bool retval = true;
+bool SecureElement::SecEle_Modeset(uint8_t type, tNFA_HANDLE seHandle) {
+  tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
+  bool retval = true;
 
-    LOG(INFO) << StringPrintf("set EE mode = 0x%X", type);
-    nfaStat = SecElem_EeModeSet (EE_HANDLE_0xF3, type);
-    if ( nfaStat == NFA_STATUS_OK)
-    {
-        LOG(INFO) << StringPrintf("SecEle_Modeset: Success");
-    }
-    else
-    {
-        retval = false;
-    }
-    return retval;
+  LOG(INFO) << StringPrintf("%s= 0x%X, Handle=%X", __func__, type, seHandle);
+  nfaStat = SecElem_EeModeSet(seHandle, type);
+  if (nfaStat == NFA_STATUS_OK) {
+    LOG(INFO) << StringPrintf("%s: Success", __func__);
+  } else {
+    retval = false;
+  }
+  return retval;
 }
 
 /*******************************************************************************
@@ -1562,6 +1509,10 @@ tNFA_HANDLE SecureElement::getEseHandleFromGenericId(jint eseId)
     {
         handle = eseId;
     }
+    else if(eseId == EUICC_ID)
+    {
+        handle = EE_HANDLE_0xF5; //0x4C1;
+    }
     LOG(INFO) << StringPrintf("%s: enter; ESE-Handle = 0x%03X", fn, handle);
     return handle;
 }
@@ -1581,11 +1532,9 @@ tNFA_HANDLE SecureElement::getActiveEeHandle (tNFA_HANDLE handle)
 
     for (uint8_t xx = 0; xx < mActualNumEe; xx++)
     {
-         if (mEeInfo[xx].ee_handle == EE_HANDLE_0xF3)
-         {
-             return (mEeInfo[xx].ee_handle);
-         }
-
+      if (mEeInfo[xx].ee_handle == handle) {
+        return (mEeInfo[xx].ee_handle);
+      }
     }
     return NFA_HANDLE_INVALID;
 }
@@ -1598,31 +1547,32 @@ tNFA_HANDLE SecureElement::getActiveEeHandle (tNFA_HANDLE handle)
 ** Returns          status
 **
 *******************************************************************************/
-tNFA_STATUS SecureElement::setNfccPwrConfig(uint8_t value)
-{
-    static const char fn [] = "SecureElement::setNfccPwrConfig()";
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
-    static uint8_t cur_value = 0xFF;
-    LOG(INFO) << StringPrintf("%s: Enter: config= 0x%X", fn, value);
-    cur_value = value;
-    SyncEventGuard guard (mPwrLinkCtrlEvent);
-    nfaStat = NFA_EePowerAndLinkCtrl((uint8_t)EE_HANDLE_0xF3, value);
-    if(nfaStat ==  NFA_STATUS_OK) {
-        if (mPwrLinkCtrlEvent.wait(NFC_CMD_TIMEOUT) == false) {
-            LOG(ERROR) << StringPrintf("mPwrLinkCtrlEvent has terminated");
-        }
+tNFA_STATUS SecureElement::setNfccPwrConfig(uint8_t value,
+                                            tNFA_HANDLE seHandle) {
+  static const char fn[] = "SecureElement::setNfccPwrConfig()";
+  tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
+  LOG(INFO) << StringPrintf("%s: Enter: config= 0x%X", fn, value);
+  SyncEventGuard guard(mPwrLinkCtrlEvent);
+  nfaStat = NFA_EePowerAndLinkCtrl(seHandle, value);
+  if (nfaStat == NFA_STATUS_OK) {
+    if (mPwrLinkCtrlEvent.wait(NFC_CMD_TIMEOUT) == false) {
+      LOG(ERROR) << StringPrintf("mPwrLinkCtrlEvent has terminated");
     }
-    LOG(INFO) << StringPrintf("%s: Exit: Status= 0x%X", fn, mPwrCmdstatus);
-    return mPwrCmdstatus;
+  }
+  LOG(INFO) << StringPrintf("%s: Exit: Status= 0x%X", fn, mPwrCmdstatus);
+  return mPwrCmdstatus;
 }
 bool SecureElement::sendEvent(uint8_t event)
 {
     tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
     bool retval = true;
+    SyncEventGuard guard(mHciSendEvent);
     nfaStat = NFA_HciSendEvent (mNfaHciHandle, mNewPipeId, event, 0x00, NULL, 0x00,NULL, 0);
 
     if(nfaStat != NFA_STATUS_OK)
         retval = false;
+    else
+        mHciSendEvent.wait();
 
     return retval;
 }
@@ -1664,43 +1614,47 @@ void SecureElement::getEeHandleList(tNFA_HANDLE *list, uint8_t* count)
 **
 ** Function:        getGateAndPipeList
 **
-** Description:     Get the gate and pipe list.
+** Description:     Try to allocate an APDU gate to HCI_APP. If successful, get
+**                  the respective APDU_APP_PIPE_ID.
 **
-** Returns:         None
+** Returns:         Success, returns the APDU_PIPE_ID.
+**                  Failure, returns 0x00.
 **
 *******************************************************************************/
-uint8_t SecureElement::getGateAndPipeList()
-{
-    tNFA_STATUS nfaStat = NFA_STATUS_FAILED;
-    static const char fn [] = "SecureElement::getActiveEeHandle";
-    //uint8_t destHost = (EE_HANDLE_0xF3 & ~NFA_HANDLE_GROUP_EE);
+uint8_t SecureElement::getGateAndPipeList(tNFA_HANDLE eeHandle) {
+  static const char fn[] = "SecureElement::getGateAndPipeList";
+  uint8_t destHost = (eeHandle & ~NFA_HANDLE_GROUP_EE);
 
-    // Get a list of existing gates and pipes
-    LOG(INFO) << StringPrintf("%s: get gate, pipe list", fn);
-        SyncEventGuard guard (mPipeListEvent);
-        nfaStat = NFA_HciGetGateAndPipeList (mNfaHciHandle);
-        if (nfaStat == NFA_STATUS_OK)
-        {
-            mPipeListEvent.wait();
-            if (mHciCfg.status == NFA_STATUS_OK)
-            {
-                 mNewPipeId = 0x19;
-                /*WA: Not updated the pipe id from libnfc-nci
-                for (uint8_t xx = 0; xx < mHciCfg.num_pipes; xx++)
-                {
-                    if ( (mHciCfg.pipe[xx].dest_host == destHost))
-                    {
-                        mNewSourceGate = mHciCfg.pipe[xx].local_gate;
-                        mNewPipeId     = mHciCfg.pipe[xx].pipe_id;
-
-                        LOG(INFO) << StringPrintf("%s: found configured gate: 0x%02x  pipe: 0x%02x", fn, mNewSourceGate, mNewPipeId);
-                        break;
-                    }
-                }
-                */
-            }
+  SyncEventGuard guardOwnGate(mAllocateGateEvent);
+  if (NFA_STATUS_OK == NFA_HciAllocGate(mNfaHciHandle, NFA_HCI_APDU_APP_GATE)) {
+    if (!mAllocateGateEvent.wait(500))
+      LOG(ERROR) << StringPrintf("%s: NFA_HciAllocGate() Timeout", fn);
+    if (!mNewSourceGate)
+      LOG(ERROR) << StringPrintf("%s: NFA_HciAllocGate() Failed", fn);
+  }
+  // Get a list of existing gates and pipes
+  LOG(INFO) << StringPrintf("%s: get gate, pipe list", fn);
+  SyncEventGuard guard(mPipeListEvent);
+  if (NFA_STATUS_OK == NFA_HciGetGateAndPipeList(mNfaHciHandle)) {
+    if (!mPipeListEvent.wait(500))
+      LOG(ERROR) << StringPrintf("%s: NFA_HciGetGateAndPipeList() Timeout", fn);
+    if (mHciCfg.status == NFA_STATUS_OK) {
+      for (uint8_t xx = 0; xx < mHciCfg.num_pipes; xx++) {
+        if (mHciCfg.pipe[xx].dest_host == destHost) {
+          mNewSourceGate = mHciCfg.pipe[xx].local_gate;
+          mNewPipeId = mHciCfg.pipe[xx].pipe_id;
+          break;
         }
-        return mNewPipeId;
+      }
+      if (mNewPipeId == 0x00)
+        LOG(ERROR) << StringPrintf("%s: Pipe is not found", fn);
+    }
+  }
+  LOG(INFO) << StringPrintf(
+      "%s: exit "
+      "gate: 0x%02x  pipe: 0x%02x",
+      fn, mNewSourceGate, mNewPipeId);
+  return mNewPipeId;
 }
 /*******************************************************************************
 **
@@ -1744,13 +1698,13 @@ void SecureElement::finalize() {
 *******************************************************************************/
 void SecureElement::releasePendingTransceive()
 {
+    AutoMutex mutex(mTimeoutHandleMutex);
     static const char fn [] = "SecureElement::releasePendingTransceive";
     LOG(INFO) << StringPrintf("%s: Entered", fn);
-    if(mIsWiredModeOpen)
-    {
-        SyncEventGuard guard (mTransceiveEvent);
-        mTransceiveEvent.notifyOne();
-    }
+    SyncEventGuard guard (mTransceiveEvent);
+    mTransceiveEvent.notifyOne();
+    SyncEventGuard guard_Abort(mAbortEvent);
+    mAbortEvent.notifyOne();
     LOG(INFO) << StringPrintf("%s: Exit", fn);
 }
 
@@ -1843,3 +1797,33 @@ uint16_t SecureElement::getEeStatus(uint16_t eehandle) {
   return ee_status;
 }
 
+/*******************************************************************************
+**
+** Function:        handleTransceiveTimeout
+**
+** Description:     Reset EE(eSE or eUICC) via power link & Mode set command
+**                  after Transceive Timed out.
+**
+** Returns:         None
+**
+*******************************************************************************/
+void SecureElement::handleTransceiveTimeout(uint8_t powerConfigValue) {
+    AutoMutex mutex(mTimeoutHandleMutex);
+    SyncEvent sTimeOutDelaySyncEvent;
+    if (!mIsWiredModeOpen) return;
+    setNfccPwrConfig(powerConfigValue, mActiveEeHandle);
+
+    SecEle_Modeset(NFCEE_DISABLE, mActiveEeHandle);
+    {
+        SyncEventGuard gaurd(sTimeOutDelaySyncEvent);
+        sTimeOutDelaySyncEvent.wait(1 * ONE_SECOND_MS);
+    }
+
+
+    setNfccPwrConfig(POWER_ALWAYS_ON | COMM_LINK_ACTIVE, mActiveEeHandle);
+    SecEle_Modeset(NFCEE_ENABLE, mActiveEeHandle);
+    {
+        SyncEventGuard gaurd(sTimeOutDelaySyncEvent);
+        sTimeOutDelaySyncEvent.wait(200);
+    }
+}

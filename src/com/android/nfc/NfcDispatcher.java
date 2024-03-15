@@ -16,30 +16,23 @@
 
 package com.android.nfc;
 
-import android.Manifest;
-import android.app.ActivityManager;
-import android.bluetooth.BluetoothAdapter;
-import android.os.UserManager;
-
-import com.android.nfc.RegisteredComponentCache.ComponentInfo;
-import com.android.nfc.handover.HandoverDataParser;
-import com.android.nfc.handover.PeripheralHandoverService;
-
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.AlertDialog;
-import android.app.IActivityManager;
 import android.app.PendingIntent;
 import android.app.PendingIntent.CanceledException;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothProtoEnums;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageManager.NameNotFoundException;
+import android.content.pm.PackageManager.ResolveInfoFlags;
 import android.content.pm.ResolveInfo;
 import android.content.res.Resources.NotFoundException;
 import android.net.Uri;
@@ -49,11 +42,14 @@ import android.nfc.NfcAdapter;
 import android.nfc.Tag;
 import android.nfc.tech.Ndef;
 import android.nfc.tech.NfcBarcode;
+import android.os.Binder;
 import android.os.Handler;
 import android.os.Message;
 import android.os.Messenger;
-import android.os.RemoteException;
+import android.os.Process;
 import android.os.UserHandle;
+import android.os.UserManager;
+import android.sysprop.NfcProperties;
 import android.util.Log;
 import android.util.proto.ProtoOutputStream;
 import android.view.LayoutInflater;
@@ -61,22 +57,28 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.TextView;
 
+import com.android.nfc.RegisteredComponentCache.ComponentInfo;
+import com.android.nfc.handover.HandoverDataParser;
+import com.android.nfc.handover.PeripheralHandoverService;
+
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.StringJoiner;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.StringJoiner;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Dispatch of NFC events to start activities
  */
 class NfcDispatcher {
-    private static final boolean DBG = false;
+    private static final boolean DBG =
+            NfcProperties.debug_enabled().orElse(false);
     private static final String TAG = "NfcDispatcher";
 
     static final int DISPATCH_SUCCESS = 1;
@@ -84,7 +86,6 @@ class NfcDispatcher {
     static final int DISPATCH_UNLOCK = 3;
 
     private final Context mContext;
-    private final IActivityManager mIActivityManager;
     private final RegisteredComponentCache mTechListFilters;
     private final ContentResolver mContentResolver;
     private final HandoverDataParser mHandoverDataParser;
@@ -100,13 +101,16 @@ class NfcDispatcher {
     private PendingIntent mOverrideIntent;
     private IntentFilter[] mOverrideFilters;
     private String[][] mOverrideTechLists;
+    private int mForegroundUid;
+    private ForegroundUtils mForegroundUtils;
     private boolean mProvisioningOnly;
+    private NfcAdapter mNfcAdapter;
+    private boolean mIsTagAppPrefSupported;
 
     NfcDispatcher(Context context,
                   HandoverDataParser handoverDataParser,
                   boolean provisionOnly) {
         mContext = context;
-        mIActivityManager = ActivityManager.getService();
         mTechListFilters = new RegisteredComponentCache(mContext,
                 NfcAdapter.ACTION_TECH_DISCOVERED, NfcAdapter.ACTION_TECH_DISCOVERED);
         mContentResolver = context.getContentResolver();
@@ -114,7 +118,9 @@ class NfcDispatcher {
         mScreenStateHelper = new ScreenStateHelper(context);
         mNfcUnlockManager = NfcUnlockManager.getInstance();
         mDeviceSupportsBluetooth = BluetoothAdapter.getDefaultAdapter() != null;
-
+        mForegroundUid = Process.INVALID_UID;
+        mForegroundUtils = ForegroundUtils.getInstance(
+                context.getSystemService(ActivityManager.class));
         synchronized (this) {
             mProvisioningOnly = provisionOnly;
         }
@@ -129,6 +135,8 @@ class NfcDispatcher {
             }
         }
         mProvisioningMimes = provisionMimes;
+        mIsTagAppPrefSupported =
+                mContext.getResources().getBoolean(R.bool.tag_intent_app_pref_supported);
 
         IntentFilter filter = new IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED);
         mContext.registerReceiver(mBluetoothStatusReceiver, filter);
@@ -146,6 +154,29 @@ class NfcDispatcher {
         mOverrideIntent = intent;
         mOverrideFilters = filters;
         mOverrideTechLists = techLists;
+
+        if (mOverrideIntent != null) {
+            int callingUid = Binder.getCallingUid();
+            if (mForegroundUid != callingUid) {
+                mForegroundUtils.registerUidToBackgroundCallback(mForegroundCallback, callingUid);
+                mForegroundUid = callingUid;
+            }
+        }
+    }
+
+    final ForegroundUtils.Callback mForegroundCallback = new ForegroundCallbackImpl();
+
+    class ForegroundCallbackImpl implements ForegroundUtils.Callback {
+        @Override
+        public void onUidToBackground(int uid) {
+            synchronized (NfcDispatcher.this) {
+                if (mForegroundUid == uid) {
+                    if (DBG) Log.d(TAG, "Uid " + uid + " switch to background.");
+                    mForegroundUid = Process.INVALID_UID;
+                    setForegroundDispatch(null, null, null);
+                }
+            }
+        }
     }
 
     public synchronized void disableProvisioningMode() {
@@ -157,12 +188,15 @@ class NfcDispatcher {
      */
     static class DispatchInfo {
         public final Intent intent;
+        public final Tag tag;
 
         final Intent rootIntent;
         final Uri ndefUri;
         final String ndefMimeType;
         final PackageManager packageManager;
         final Context context;
+        final NfcAdapter mNfcAdapter;
+        final boolean mIsTagAppPrefSupported;
 
         public DispatchInfo(Context context, Tag tag, NdefMessage message) {
             intent = new Intent();
@@ -176,6 +210,7 @@ class NfcDispatcher {
                 ndefUri = null;
                 ndefMimeType = null;
             }
+            this.tag = tag;
 
             rootIntent = new Intent(context, NfcRootActivity.class);
             rootIntent.putExtra(NfcRootActivity.EXTRA_LAUNCH_INTENT, intent);
@@ -183,6 +218,13 @@ class NfcDispatcher {
 
             this.context = context;
             packageManager = context.getPackageManager();
+            mIsTagAppPrefSupported =
+                    context.getResources().getBoolean(R.bool.tag_intent_app_pref_supported);
+            if (mIsTagAppPrefSupported) {
+                mNfcAdapter = NfcAdapter.getDefaultAdapter(context.getApplicationContext());
+            } else {
+                mNfcAdapter = null;
+            }
         }
 
         public Intent setNdefIntent() {
@@ -212,8 +254,15 @@ class NfcDispatcher {
         }
 
         public boolean hasIntentReceiver() {
-            return packageManager.queryIntentActivitiesAsUser(intent, 0,
-                    ActivityManager.getCurrentUser()).size() > 0;
+            boolean status = false;
+            List<UserHandle> luh = getCurrentActiveUserHandles();
+            for (UserHandle uh : luh) {
+                if (packageManager.queryIntentActivitiesAsUser(intent,
+                        ResolveInfoFlags.of(0), uh).size() > 0) {
+                    status = true;
+                }
+            }
+            return status;
         }
 
         public boolean isWebIntent() {
@@ -223,6 +272,44 @@ class NfcDispatcher {
 
         public String getUri() {
             return ndefUri.toString();
+        }
+
+        List<ResolveInfo> checkPrefList(List<ResolveInfo> activities, int userId) {
+            if (!mIsTagAppPrefSupported) return activities;
+            ArrayList<ResolveInfo> filtered = new ArrayList<>(activities);
+            int muteAppCount = 0;
+            for (ResolveInfo resolveInfo : activities) {
+                ActivityInfo activityInfo = resolveInfo.activityInfo;
+                ComponentName cmp = new ComponentName(activityInfo.packageName, activityInfo.name);
+                if (DBG) {
+                    Log.d(TAG, "activityInfo.packageName= " + activityInfo.packageName);
+                    Log.d(TAG, "activityInfo.name= " + activityInfo.name);
+                    Log.d(TAG, "cmp.flattenToString= " + cmp.flattenToString());
+                }
+                Map<String, Boolean> preflist =
+                        mNfcAdapter.getTagIntentAppPreferenceForUser(userId);
+                if (preflist.containsKey(activityInfo.packageName)) {
+                    if (!preflist.get(activityInfo.packageName)) {
+                        if (DBG) Log.d(TAG, "mute pkg:" + cmp.flattenToString());
+                        muteAppCount++;
+                        filtered.remove(resolveInfo);
+                    }
+                } else {
+                    // Default sets allow to the preference list
+                    mNfcAdapter.setTagIntentAppPreferenceForUser(userId, activityInfo.packageName,
+                            true);
+                }
+            }
+            if (muteAppCount > 0) {
+                if (DBG) Log.d(TAG, "muteAppCount = " + muteAppCount);
+                if (filtered.size() > 0) {
+                    rootIntent.setClass(context, TechListChooserActivity.class);
+                    rootIntent.putExtra(Intent.EXTRA_INTENT, intent);
+                    rootIntent.putParcelableArrayListExtra(
+                            TechListChooserActivity.EXTRA_RESOLVE_INFOS, filtered);
+                }
+            }
+            return filtered;
         }
 
         /**
@@ -238,28 +325,126 @@ class NfcDispatcher {
             // is not available on Context. Instead, we query the PackageManager beforehand
             // to determine if there is an Activity to handle this intent, and base the
             // result of off that.
-            List<ResolveInfo> activities = packageManager.queryIntentActivitiesAsUser(intent, 0,
-                    ActivityManager.getCurrentUser());
+            // try current user if there is an Activity to handle this intent
+            List<ResolveInfo> activities = packageManager.queryIntentActivitiesAsUser(intent,
+                    ResolveInfoFlags.of(0), UserHandle.of(ActivityManager.getCurrentUser()));
+            if (mIsTagAppPrefSupported) {
+                activities = checkPrefList(activities, ActivityManager.getCurrentUser());
+            }
+            if (DBG) Log.d(TAG, "activities.size() = " + activities.size());
             if (activities.size() > 0) {
+                if (DBG) Log.d(TAG, "tryStartActivity currentUser");
                 context.startActivityAsUser(rootIntent, UserHandle.CURRENT);
+
+                int uid = -1;
+                if (activities.size() == 1) {
+                    uid = activities.get(0).activityInfo.applicationInfo.uid;
+                } else {
+                    NfcStatsLog.write(NfcStatsLog.NFC_READER_CONFLICT_OCCURRED);
+                }
                 NfcStatsLog.write(NfcStatsLog.NFC_TAG_OCCURRED,
-                        NfcStatsLog.NFC_TAG_OCCURRED__TYPE__APP_LAUNCH);
+                        NfcStatsLog.NFC_TAG_OCCURRED__TYPE__APP_LAUNCH,
+                        uid,
+                        tag.getTechCodeList(),
+                        BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                        "");
                 return true;
+            }
+            // try other users when there is no Activity in current user to handle this intent
+            List<UserHandle> userHandles = getCurrentActiveUserHandles();
+            for (UserHandle uh : userHandles) {
+                activities = packageManager.queryIntentActivitiesAsUser(intent,
+                        ResolveInfoFlags.of(0), uh);
+                if (mIsTagAppPrefSupported) {
+                    activities = checkPrefList(activities, uh.getIdentifier());
+                }
+                if (activities.size() > 0) {
+                    if (DBG) Log.d(TAG, "tryStartActivity other user");
+                    rootIntent.putExtra(NfcRootActivity.EXTRA_LAUNCH_INTENT_USER_HANDLE, uh);
+                    context.startActivityAsUser(rootIntent, uh);
+
+                    int uid = -1;
+                    if (activities.size() == 1) {
+                        uid = activities.get(0).activityInfo.applicationInfo.uid;
+                    } else {
+                        NfcStatsLog.write(NfcStatsLog.NFC_READER_CONFLICT_OCCURRED);
+                    }
+                    NfcStatsLog.write(NfcStatsLog.NFC_TAG_OCCURRED,
+                            NfcStatsLog.NFC_TAG_OCCURRED__TYPE__APP_LAUNCH,
+                            uid,
+                            tag.getTechCodeList(),
+                            BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                            "");
+                    return true;
+                }
             }
             return false;
         }
 
         boolean tryStartActivity(Intent intentToStart) {
+            // try current user if there is an Activity to handle this intent
             List<ResolveInfo> activities = packageManager.queryIntentActivitiesAsUser(
-                    intentToStart, 0, ActivityManager.getCurrentUser());
+                    intentToStart, 0, UserHandle.of(ActivityManager.getCurrentUser()));
             if (activities.size() > 0) {
+                if (DBG) Log.d(TAG, "tryStartActivity(Intent) currentUser");
                 rootIntent.putExtra(NfcRootActivity.EXTRA_LAUNCH_INTENT, intentToStart);
                 context.startActivityAsUser(rootIntent, UserHandle.CURRENT);
+
+                int uid = -1;
+                if (activities.size() == 1) {
+                    uid = activities.get(0).activityInfo.applicationInfo.uid;
+                }
                 NfcStatsLog.write(NfcStatsLog.NFC_TAG_OCCURRED,
-                        NfcStatsLog.NFC_TAG_OCCURRED__TYPE__APP_LAUNCH);
+                        NfcStatsLog.NFC_TAG_OCCURRED__TYPE__APP_LAUNCH,
+                        uid,
+                        tag.getTechCodeList(),
+                        BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                        "");
                 return true;
             }
+            // try other users when there is no Activity in current user to handle this intent
+            List<UserHandle> userHandles = getCurrentActiveUserHandles();
+            for (UserHandle uh : userHandles) {
+                activities = packageManager.queryIntentActivitiesAsUser(intentToStart,
+                        ResolveInfoFlags.of(0), uh);
+                if (mIsTagAppPrefSupported) {
+                    activities = checkPrefList(activities, uh.getIdentifier());
+                }
+                if (activities.size() > 0) {
+                    if (DBG) Log.d(TAG, "tryStartActivity(Intent) other user");
+                    rootIntent.putExtra(NfcRootActivity.EXTRA_LAUNCH_INTENT, intentToStart);
+                    rootIntent.putExtra(NfcRootActivity.EXTRA_LAUNCH_INTENT_USER_HANDLE, uh);
+                    context.startActivityAsUser(rootIntent, uh);
+
+                    int uid = -1;
+                    if (activities.size() == 1) {
+                        uid = activities.get(0).activityInfo.applicationInfo.uid;
+                    }
+                    NfcStatsLog.write(NfcStatsLog.NFC_TAG_OCCURRED,
+                            NfcStatsLog.NFC_TAG_OCCURRED__TYPE__APP_LAUNCH,
+                            uid,
+                            tag.getTechCodeList(),
+                            BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                            "");
+                    return true;
+                }
+            }
             return false;
+        }
+
+        List<UserHandle> getCurrentActiveUserHandles() {
+            UserManager um = context.createContextAsUser(
+                    UserHandle.of(ActivityManager.getCurrentUser()), /*flags=*/0)
+                    .getSystemService(UserManager.class);
+            List<UserHandle> luh = um.getEnabledProfiles();
+            List<UserHandle> rluh = new ArrayList<UserHandle>();
+            for (UserHandle uh : luh) {
+                if (um.isQuietModeEnabled(uh)) {
+                    rluh.add(uh);
+                }
+            }
+            luh.removeAll(rluh);
+            return luh;
         }
     }
 
@@ -278,6 +463,9 @@ class NfcDispatcher {
         boolean provisioningOnly;
         NdefMessage message = null;
         Ndef ndef = Ndef.get(tag);
+        if (mIsTagAppPrefSupported) {
+            mNfcAdapter = NfcAdapter.getDefaultAdapter(mContext.getApplicationContext());
+        }
 
         synchronized (this) {
             overrideFilters = mOverrideFilters;
@@ -313,32 +501,45 @@ class NfcDispatcher {
         if (tryOverrides(dispatch, tag, message, overrideIntent, overrideFilters,
                 overrideTechLists)) {
             NfcStatsLog.write(
-                    NfcStatsLog.NFC_TAG_OCCURRED, NfcStatsLog.NFC_TAG_OCCURRED__TYPE__APP_LAUNCH);
+                    NfcStatsLog.NFC_TAG_OCCURRED,
+                    NfcStatsLog.NFC_TAG_OCCURRED__TYPE__FOREGROUND_DISPATCH,
+                    mForegroundUid,
+                    tag.getTechCodeList(),
+                    BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                    "");
             return screenUnlocked ? DISPATCH_UNLOCK : DISPATCH_SUCCESS;
         }
 
-        if (tryPeripheralHandover(message)) {
+        if (tryPeripheralHandover(message, tag)) {
             if (DBG) Log.i(TAG, "matched BT HANDOVER");
-            NfcStatsLog.write(
-                    NfcStatsLog.NFC_TAG_OCCURRED, NfcStatsLog.NFC_TAG_OCCURRED__TYPE__BT_PAIRING);
             return screenUnlocked ? DISPATCH_UNLOCK : DISPATCH_SUCCESS;
         }
 
         if (NfcWifiProtectedSetup.tryNfcWifiSetup(ndef, mContext)) {
             if (DBG) Log.i(TAG, "matched NFC WPS TOKEN");
             NfcStatsLog.write(
-                    NfcStatsLog.NFC_TAG_OCCURRED, NfcStatsLog.NFC_TAG_OCCURRED__TYPE__WIFI_CONNECT);
+                    NfcStatsLog.NFC_TAG_OCCURRED,
+                    NfcStatsLog.NFC_TAG_OCCURRED__TYPE__WIFI_CONNECT,
+                    -1,
+                    tag.getTechCodeList(),
+                    BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                    "");
             return screenUnlocked ? DISPATCH_UNLOCK : DISPATCH_SUCCESS;
         }
 
         if (provisioningOnly) {
             NfcStatsLog.write(
-                    NfcStatsLog.NFC_TAG_OCCURRED, NfcStatsLog.NFC_TAG_OCCURRED__TYPE__PROVISION);
+                    NfcStatsLog.NFC_TAG_OCCURRED,
+                    NfcStatsLog.NFC_TAG_OCCURRED__TYPE__PROVISION,
+                    -1,
+                    tag.getTechCodeList(),
+                    BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                    "");
             if (message == null) {
                 // We only allow NDEF-message dispatch in provisioning mode
                 return DISPATCH_FAIL;
             }
-            // Restrict to mime-types in whitelist.
+            // Restrict to mime-types in allowlist.
             String ndefMimeType = message.getRecords()[0].toMimeType();
             if (provisioningMimes == null ||
                     !(Arrays.asList(provisioningMimes).contains(ndefMimeType))) {
@@ -368,7 +569,12 @@ class NfcDispatcher {
         }
 
         if (DBG) Log.i(TAG, "no match");
-        NfcStatsLog.write(NfcStatsLog.NFC_TAG_OCCURRED, NfcStatsLog.NFC_TAG_OCCURRED__TYPE__OTHERS);
+        NfcStatsLog.write(NfcStatsLog.NFC_TAG_OCCURRED,
+              NfcStatsLog.NFC_TAG_OCCURRED__TYPE__OTHERS,
+              -1,
+              tag.getTechCodeList(),
+              BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+              "");
         return DISPATCH_FAIL;
     }
 
@@ -534,25 +740,27 @@ class NfcDispatcher {
             }
         }
 
+        List<UserHandle> luh = dispatch.getCurrentActiveUserHandles();
         // Try to perform regular launch of the first AAR
         if (aarPackages.size() > 0) {
             String firstPackage = aarPackages.get(0);
             PackageManager pm;
-            try {
-                UserHandle currentUser = new UserHandle(ActivityManager.getCurrentUser());
-                pm = mContext.createPackageContextAsUser("android", 0,
-                        currentUser).getPackageManager();
-            } catch (NameNotFoundException e) {
-                Log.e(TAG, "Could not create user package context");
-                return false;
-            }
-            Intent appLaunchIntent = pm.getLaunchIntentForPackage(firstPackage);
-            if (appLaunchIntent != null) {
-                ResolveInfo ri = pm.resolveActivity(appLaunchIntent, 0);
-                if (ri != null && ri.activityInfo != null && ri.activityInfo.exported &&
-                        dispatch.tryStartActivity(appLaunchIntent)) {
-                    if (DBG) Log.i(TAG, "matched AAR to application launch");
-                    return true;
+            for (UserHandle uh : luh) {
+                try {
+                    pm = mContext.createPackageContextAsUser("android", 0,
+                            uh).getPackageManager();
+                } catch (NameNotFoundException e) {
+                    Log.e(TAG, "Could not create user package context");
+                    return false;
+                }
+                Intent appLaunchIntent = pm.getLaunchIntentForPackage(firstPackage);
+                if (appLaunchIntent != null) {
+                    ResolveInfo ri = pm.resolveActivity(appLaunchIntent, 0);
+                    if (ri != null && ri.activityInfo != null && ri.activityInfo.exported
+                            && dispatch.tryStartActivity(appLaunchIntent)) {
+                        if (DBG) Log.i(TAG, "matched AAR to application launch");
+                        return true;
+                    }
                 }
             }
             // Find the package in Market:
@@ -567,27 +775,36 @@ class NfcDispatcher {
         dispatch.intent.setPackage(null);
 
         if (dispatch.isWebIntent() && dispatch.hasIntentReceiver()) {
-            if (DBG) Log.i(TAG, "matched Web link - prompting user");
-            showWebLinkConfirmation(dispatch);
-            NfcStatsLog.write(
-                    NfcStatsLog.NFC_TAG_OCCURRED, NfcStatsLog.NFC_TAG_OCCURRED__TYPE__URL);
-            return true;
-        }
-
-        try {
-            UserHandle currentUser = new UserHandle(ActivityManager.getCurrentUser());
-            PackageManager pm = mContext.createPackageContextAsUser("android", 0,
-                        currentUser).getPackageManager();
-            ResolveInfo ri = pm.resolveActivity(intent, 0);
-
-            if (ri != null && ri.activityInfo != null && ri.activityInfo.exported && dispatch.tryStartActivity()) {
-                if (DBG) Log.i(TAG, "matched NDEF");
+            if (showWebLinkConfirmation(dispatch)) {
+                if (DBG) Log.i(TAG, "matched Web link - prompting user");
+                NfcStatsLog.write(
+                        NfcStatsLog.NFC_TAG_OCCURRED,
+                        NfcStatsLog.NFC_TAG_OCCURRED__TYPE__URL,
+                        -1,
+                        dispatch.tag.getTechCodeList(),
+                        BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED,
+                        "");
                 return true;
             }
-        } catch (NameNotFoundException ignore) {
-            Log.e(TAG, "Could not create user package context");
+            return false;
         }
 
+        for (UserHandle uh : luh) {
+            try {
+                PackageManager pm = mContext.createPackageContextAsUser("android", 0,
+                        uh).getPackageManager();
+                ResolveInfo ri = pm.resolveActivity(intent, 0);
+
+                if (ri != null && ri.activityInfo != null && ri.activityInfo.exported
+                        && dispatch.tryStartActivity()) {
+                    if (DBG) Log.i(TAG, "matched NDEF");
+                    return true;
+                }
+            } catch (NameNotFoundException ignore) {
+                Log.e(TAG, "Could not create user package context");
+            }
+        }
+        if (DBG) Log.i(TAG, "No match NDEF");
         return false;
     }
 
@@ -613,24 +830,43 @@ class NfcDispatcher {
         List<ComponentInfo> registered = mTechListFilters.getComponents();
 
         PackageManager pm;
-        try {
-            UserHandle currentUser = new UserHandle(ActivityManager.getCurrentUser());
-            pm = mContext.createPackageContextAsUser("android", 0,
-                    currentUser).getPackageManager();
-        } catch (NameNotFoundException e) {
-            Log.e(TAG, "Could not create user package context");
-            return false;
-        }
-        // Check each registered activity to see if it matches
-        for (ComponentInfo info : registered) {
-            // Don't allow wild card matching
-            if (filterMatch(tagTechs, info.techs) &&
-                    isComponentEnabled(pm, info.resolveInfo)) {
-                // Add the activity as a match if it's not already in the list
-                // Check if exported flag is not explicitly set to false to prevent
-                // SecurityExceptions.
-                if (!matches.contains(info.resolveInfo) && info.resolveInfo.activityInfo.exported) {
-                    matches.add(info.resolveInfo);
+        List<UserHandle> luh = dispatch.getCurrentActiveUserHandles();
+
+        for (UserHandle uh : luh) {
+            try {
+                pm = mContext.createPackageContextAsUser("android", 0,
+                        uh).getPackageManager();
+            } catch (NameNotFoundException e) {
+                Log.e(TAG, "Could not create user package context");
+                return false;
+            }
+            // Check each registered activity to see if it matches
+            for (ComponentInfo info : registered) {
+                // Don't allow wild card matching
+                if (filterMatch(tagTechs, info.techs)
+                        && isComponentEnabled(pm, info.resolveInfo)) {
+                    // Add the activity as a match if it's not already in the list
+                    // Check if exported flag is not explicitly set to false to prevent
+                    // SecurityExceptions.
+                    if (!matches.contains(info.resolveInfo)
+                            && info.resolveInfo.activityInfo.exported) {
+                        if (!mIsTagAppPrefSupported) {
+                            matches.add(info.resolveInfo);
+                        } else {
+                            String pkgName = info.resolveInfo.activityInfo.packageName;
+                            int userId = uh.getIdentifier();
+                            Map<String, Boolean> preflist =
+                                    mNfcAdapter.getTagIntentAppPreferenceForUser(userId);
+                            if (preflist.getOrDefault(pkgName, true)) {
+                                matches.add(info.resolveInfo);
+                                if (!preflist.containsKey(pkgName)) {
+                                    // Default sets allow to the preference list
+                                    mNfcAdapter.setTagIntentAppPreferenceForUser(userId,
+                                            pkgName, true);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -650,23 +886,23 @@ class NfcDispatcher {
             intent.putExtra(Intent.EXTRA_INTENT, dispatch.intent);
             intent.putParcelableArrayListExtra(TechListChooserActivity.EXTRA_RESOLVE_INFOS,
                     matches);
-            if (dispatch.tryStartActivity(intent)) {
-                if (DBG) Log.i(TAG, "matched multiple TECH");
-                return true;
-            }
+
+            if (DBG) Log.i(TAG, "matched multiple TECH");
+            NfcStatsLog.write(NfcStatsLog.NFC_READER_CONFLICT_OCCURRED);
+            return dispatch.tryStartActivity(intent);
         }
         return false;
     }
 
-    public boolean tryPeripheralHandover(NdefMessage m) {
+    public boolean tryPeripheralHandover(NdefMessage m, Tag tag) {
         if (m == null || !mDeviceSupportsBluetooth) return false;
 
         if (DBG) Log.d(TAG, "tryHandover(): " + m.toString());
 
         HandoverDataParser.BluetoothHandoverData handover = mHandoverDataParser.parseBluetooth(m);
         if (handover == null || !handover.valid) return false;
-        if (UserManager.get(mContext).hasUserRestriction(
-                UserManager.DISALLOW_CONFIG_BLUETOOTH,
+        UserManager um = mContext.getSystemService(UserManager.class);
+        if (um.hasUserRestrictionForUser(UserManager.DISALLOW_CONFIG_BLUETOOTH,
                 // hasUserRestriction does not support UserHandle.CURRENT
                 UserHandle.of(ActivityManager.getCurrentUser()))) {
             return false;
@@ -687,7 +923,44 @@ class NfcDispatcher {
         }
         intent.putExtra(PeripheralHandoverService.EXTRA_BT_ENABLED, mBluetoothEnabledByNfc.get());
         intent.putExtra(PeripheralHandoverService.EXTRA_CLIENT, mMessenger);
-        mContext.startServiceAsUser(intent, UserHandle.CURRENT);
+        Context contextAsUser = mContext.createContextAsUser(UserHandle.CURRENT, /* flags= */ 0);
+        contextAsUser.startService(intent);
+
+        int btClass = BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED;
+        String btName = "";
+        if (handover.btClass != null) {
+            if (DBG) Log.d(TAG, "handover.btClass: " + handover.btClass.getMajorDeviceClass());
+            btClass = handover.btClass.getMajorDeviceClass();
+
+            Set<Integer> knownBtClasses = Set.of(BluetoothProtoEnums.MAJOR_CLASS_MISC,
+                    BluetoothProtoEnums.MAJOR_CLASS_COMPUTER,
+                    BluetoothProtoEnums.MAJOR_CLASS_PHONE,
+                    BluetoothProtoEnums.MAJOR_CLASS_NETWORKING,
+                    BluetoothProtoEnums.MAJOR_CLASS_AUDIO_VIDEO,
+                    BluetoothProtoEnums.MAJOR_CLASS_PERIPHERAL,
+                    BluetoothProtoEnums.MAJOR_CLASS_IMAGING,
+                    BluetoothProtoEnums.MAJOR_CLASS_WEARABLE,
+                    BluetoothProtoEnums.MAJOR_CLASS_TOY,
+                    BluetoothProtoEnums.MAJOR_CLASS_HEALTH);
+
+            if (!knownBtClasses.contains(btClass)) {
+                // invalid values out of defined enum
+                btClass = BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED;
+
+            } else if (btClass != BluetoothProtoEnums.MAJOR_CLASS_UNCATEGORIZED &&
+                    btClass != BluetoothProtoEnums.MAJOR_CLASS_HEALTH) {
+                // do not collect names for HEALTH and UNKNOWN
+                if (DBG) Log.d(TAG, "handover.name: " + handover.name);
+                btName = handover.name;
+            }
+        }
+
+        NfcStatsLog.write(NfcStatsLog.NFC_TAG_OCCURRED,
+                NfcStatsLog.NFC_TAG_OCCURRED__TYPE__BT_PAIRING,
+                -1,
+                tag.getTechCodeList(),
+                btClass,
+                btName);
 
         return true;
     }
@@ -702,9 +975,10 @@ class NfcDispatcher {
      * resumeAppSwitches().
     */
     void resumeAppSwitches() {
-        try {
-            mIActivityManager.resumeAppSwitches();
-        } catch (RemoteException e) { }
+        //// Should be auto resumed after S
+        // try {
+        //     mIActivityManager.resumeAppSwitches();
+        // } catch (RemoteException e) { }
     }
 
     /** Returns true if the tech list filter matches the techs on the tag */
@@ -757,10 +1031,9 @@ class NfcDispatcher {
         return enabled;
     }
 
-    void showWebLinkConfirmation(DispatchInfo dispatch) {
+    boolean showWebLinkConfirmation(DispatchInfo dispatch) {
         if (!mContext.getResources().getBoolean(R.bool.enable_nfc_url_open_dialog)) {
-            dispatch.tryStartActivity();
-            return;
+            return dispatch.tryStartActivity();
         }
         AlertDialog.Builder builder = new AlertDialog.Builder(
                 mContext.getApplicationContext(),
@@ -780,15 +1053,16 @@ class NfcDispatcher {
             dispatch.tryStartActivity();
         });
         AlertDialog dialog = builder.create();
-        dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_DIALOG);
         dialog.show();
+        return true;
     }
 
     void dump(FileDescriptor fd, PrintWriter pw, String[] args) {
         synchronized (this) {
             pw.println("mOverrideIntent=" + mOverrideIntent);
-            pw.println("mOverrideFilters=" + mOverrideFilters);
-            pw.println("mOverrideTechLists=" + mOverrideTechLists);
+            pw.println("mOverrideFilters=" + Arrays.toString(mOverrideFilters));
+            pw.println("mOverrideTechLists=" + Arrays.deepToString(mOverrideTechLists));
         }
     }
 
@@ -806,11 +1080,12 @@ class NfcDispatcher {
                 proto.write(NfcDispatcherProto.OVERRIDE_TECH_LISTS, techListsJoiner.toString());
             }
             if (mOverrideIntent != null) {
-                mOverrideIntent.dumpDebug(proto, NfcDispatcherProto.OVERRIDE_INTENT);
+                Utils.dumpDebugPendingIntent(
+                        mOverrideIntent, proto, NfcDispatcherProto.OVERRIDE_INTENT);
             }
             if (mOverrideFilters != null) {
                 for (IntentFilter filter : mOverrideFilters) {
-                    filter.dumpDebug(proto, NfcDispatcherProto.OVERRIDE_FILTERS);
+                    Utils.dumpDebugIntentFilter(filter, proto, NfcDispatcherProto.OVERRIDE_FILTERS);
                 }
             }
         }

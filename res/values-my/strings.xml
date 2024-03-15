@@ -15,7 +15,7 @@
     <string name="beam_handover_not_supported" msgid="4083165921751489015">"လက်ခံစက်သည် လှိုင်းလွှင့်ခြင်းမှတစ်ဆင့် ကြီးမားသောဖိုင်လွဲခြင်းများကို မထောက်ပံ့ပါ"</string>
     <string name="beam_try_again" msgid="3364677301009783455">"ထပ်ပြီး စက်ကို အတူထားပါ"</string>
     <string name="beam_busy" msgid="5253335587620612576">"Beam လောလောဆယ် အလုပ်များနေ၏။ ယခင် ကူးပြောင်းမှုပြီးမှ ထပ်မံကြိုးစားပါ။"</string>
-    <string name="device" msgid="4459621591392478151">"ကိရိယာ"</string>
+    <string name="device" msgid="4459621591392478151">"စက်ပစ္စည်း"</string>
     <string name="connecting_peripheral" msgid="1296182660525660935">"<xliff:g id="DEVICE_NAME">%1$s</xliff:g> အားချိတ်ဆက်နေ၏"</string>
     <string name="connected_peripheral" msgid="20748648543160091">"<xliff:g id="DEVICE_NAME">%1$s</xliff:g> အား ချိတ်ဆက်ပြီး"</string>
     <string name="connect_peripheral_failed" msgid="7925702596242839275">"<xliff:g id="DEVICE_NAME">%1$s</xliff:g> အား မချိတ်ဆက်နိုင်ပါ"</string>
@@ -29,6 +29,8 @@
     <string name="pair_no" msgid="5022308368904055020">"No"</string>
     <string name="tap_again_to_pay" msgid="5754988005412859897">"<xliff:g id="APP">%1$s</xliff:g>နှင့် ပေးချေရန် နောက်တစ်ခါ ခေါက်ထိပါ"</string>
     <string name="tap_again_to_complete" msgid="5423640945118279123">"<xliff:g id="APP">%1$s</xliff:g>နှင့် ပြီးဆုံးရန် နောက်တစ်ခါ ခေါက်ထိပါ"</string>
+    <string name="tap_again_description" msgid="3019101527041529661">"ကတ်ဖတ်စက်သို့ ပြပါ"</string>
+    <string name="appchooser_description" msgid="2554187931814833244">"စကင်ဖတ်သည့် အက်ပ်ရွေးရန်"</string>
     <string name="transaction_failure" msgid="7828102078637936513">"<xliff:g id="APP">%1$s</xliff:g>နှင့် လုပ်ငန်းစဥ်မပြီးဆုံးနိုင်ပါ"</string>
     <string name="could_not_use_app" msgid="8137587876138569083">"<xliff:g id="APP">%1$s</xliff:g>ကို အသုံးပြု၍ မရပါ"</string>
     <string name="pay_with" msgid="5531545488795798945">"ဖြင့် ငွေပေးချမေည်"</string>
@@ -51,4 +53,6 @@
     <string name="tag_dispatch_failed" msgid="3562984995049738400">"ဤ \'NFC တဂ်\' အတွက် ပံ့ပိုးထားသော အပလီကေးရှင်း မရှိပါ"</string>
     <string name="nfc_blocking_alert_title" msgid="1086172436984457085">"NFC ပိတ်နေနိုင်သည်"</string>
     <string name="nfc_blocking_alert_message" msgid="7003156052570107490">"ပြုပြင်နည်းကို လေ့လာရန် တို့ပါ။"</string>
+    <string name="nfc_logging_alert_title" msgid="5300867034660942987">"NFC ဒေတာကို မှတ်တမ်းတင်နေသည်"</string>
+    <string name="nfc_logging_alert_message" msgid="1550187184825467942">"မှတ်တမ်းတင်ခြင်းရပ်ရန် တို့ပါ။"</string>
 </resources>

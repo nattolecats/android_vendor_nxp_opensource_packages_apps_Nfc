@@ -10,7 +10,7 @@
     <string name="beam_complete" msgid="477026736424637435">"Sisältö jaettu"</string>
     <string name="beam_failed" msgid="5116241718189888630">"Jakoa ei suoritettu valmiiksi"</string>
     <string name="beam_canceled" msgid="5425192751826544741">"Jako peruutettu"</string>
-    <string name="cancel" msgid="61873902552555096">"Peruuta"</string>
+    <string name="cancel" msgid="61873902552555096">"Peru"</string>
     <string name="beam_tap_to_view" msgid="7430394753262448349">"Näytä koskettamalla"</string>
     <string name="beam_handover_not_supported" msgid="4083165921751489015">"Vastaanottajan laite ei tue suurten tiedostojen siirtoa sisällön jakamisen kautta."</string>
     <string name="beam_try_again" msgid="3364677301009783455">"Yhdistä laitteet uudelleen"</string>
@@ -29,6 +29,8 @@
     <string name="pair_no" msgid="5022308368904055020">"Ei"</string>
     <string name="tap_again_to_pay" msgid="5754988005412859897">"Maksa sovelluksella <xliff:g id="APP">%1$s</xliff:g> napauttamalla uudelleen."</string>
     <string name="tap_again_to_complete" msgid="5423640945118279123">"Maksa sovelluksella <xliff:g id="APP">%1$s</xliff:g> napauttamalla uudelleen."</string>
+    <string name="tap_again_description" msgid="3019101527041529661">"Aseta lukijaa vasten"</string>
+    <string name="appchooser_description" msgid="2554187931814833244">"Valitse skannattava sovellus"</string>
     <string name="transaction_failure" msgid="7828102078637936513">"Tapahtuman suorittaminen sovelluksella <xliff:g id="APP">%1$s</xliff:g> epäonnistui."</string>
     <string name="could_not_use_app" msgid="8137587876138569083">"Sovelluksen <xliff:g id="APP">%1$s</xliff:g> käyttö epäonnistui."</string>
     <string name="pay_with" msgid="5531545488795798945">"Maksusovellus:"</string>
@@ -51,4 +53,6 @@
     <string name="tag_dispatch_failed" msgid="3562984995049738400">"Ei NFC-tagia tukevia sovelluksia"</string>
     <string name="nfc_blocking_alert_title" msgid="1086172436984457085">"NFC saattaa olla estetty"</string>
     <string name="nfc_blocking_alert_message" msgid="7003156052570107490">"Napauta, jos haluat oppia korjaamaan ongelman."</string>
+    <string name="nfc_logging_alert_title" msgid="5300867034660942987">"NFC-dataa tallennetaan"</string>
+    <string name="nfc_logging_alert_message" msgid="1550187184825467942">"Lopeta tallennus napauttamalla."</string>
 </resources>

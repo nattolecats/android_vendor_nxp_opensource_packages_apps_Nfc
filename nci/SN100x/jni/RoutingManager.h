@@ -33,7 +33,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2018-2021 NXP
+*  Copyright 2018-2021, 2023 NXP
 *
 ******************************************************************************/
 #pragma once
@@ -159,7 +159,6 @@ class RoutingManager {
     tNFA_HANDLE checkAndUpdateAltRoute(int& routeLoc);
 
     uint32_t getUicc2selected();
-    bool checkAndUpdatePowerState(uint8_t& power);
     bool isNfceeActive(int routeLoc, tNFA_HANDLE& ActDevHandle);
     uint16_t sRoutingBuffLen;
     uint8_t* sRoutingBuff;
@@ -179,6 +178,7 @@ class RoutingManager {
   tNFA_TECHNOLOGY_MASK updateEeTechRouteSetting();
   void updateDefaultProtocolRoute();
   void updateDefaultRoute();
+  bool isTypeATypeBTechSupportedInEe(tNFA_HANDLE eeHandle);
 
   // See AidRoutingManager.java for corresponding
   // AID_MATCHING_ constants
@@ -224,6 +224,7 @@ class RoutingManager {
   uint16_t mDefaultSysCodeRoute;
   uint8_t mDefaultSysCodePowerstate;
   uint8_t mOffHostAidRoutingPowerState;
+  uint8_t mOffHostListenTechMask;
 #if(NXP_EXTNS != TRUE)
   bool mDeinitializing;
   bool mEeInfoChanged;
@@ -261,6 +262,7 @@ class RoutingManager {
     static const int ROUTE_LOC_HOST_ID      = 0x400;
     //FIX THIS:static const int ROUTE_LOC_ESE_ID       = SecureElement::EE_HANDLE_0xF3;
     static const int ROUTE_LOC_ESE_ID       = 0x4C0;
+    static const int ROUTE_LOC_EUICC_ID     = 0x4C1;
     static const int ROUTE_LOC_UICC1_ID     = 0x402;
     static const int ROUTE_LOC_UICC1_ID_NCI2_0 = 0x480;
     //FIX THIS:static const int ROUTE_LOC_UICC2_ID     = SecureElement::EE_HANDLE_0xF8;

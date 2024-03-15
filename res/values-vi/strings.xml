@@ -29,6 +29,8 @@
     <string name="pair_no" msgid="5022308368904055020">"Không"</string>
     <string name="tap_again_to_pay" msgid="5754988005412859897">"Nhấn lại để thanh toán bằng <xliff:g id="APP">%1$s</xliff:g>"</string>
     <string name="tap_again_to_complete" msgid="5423640945118279123">"Nhấn lại để hoàn tất bằng <xliff:g id="APP">%1$s</xliff:g>"</string>
+    <string name="tap_again_description" msgid="3019101527041529661">"Đưa vào máy đọc thẻ"</string>
+    <string name="appchooser_description" msgid="2554187931814833244">"Chọn ứng dụng để quét"</string>
     <string name="transaction_failure" msgid="7828102078637936513">"Không thể hoàn tất giao dịch này bằng <xliff:g id="APP">%1$s</xliff:g>."</string>
     <string name="could_not_use_app" msgid="8137587876138569083">"Không thể sử dụng <xliff:g id="APP">%1$s</xliff:g>."</string>
     <string name="pay_with" msgid="5531545488795798945">"Thanh toán bằng"</string>
@@ -43,12 +45,14 @@
     <string name="beam_requires_nfc_enabled" msgid="2800366967218600534">"Android Beam yêu cầu bật NFC. Bạn có muốn bật NFC không?"</string>
     <string name="android_beam" msgid="1666446406999492763">"Android Beam"</string>
     <string name="beam_requires_external_storage_permission" msgid="8798337545702206901">"Ứng dụng không có quyền truy cập vào Bộ nhớ ngoài. Ứng dụng cần phải có quyền này để chiếu tệp này"</string>
-    <string name="title_confirm_url_open" msgid="8069968913244794478">"Mở liên kết?"</string>
+    <string name="title_confirm_url_open" msgid="8069968913244794478">"Mở đường liên kết?"</string>
     <string name="summary_confirm_url_open" product="tablet" msgid="3353502750736192055">"Máy tính bảng của bạn đã nhận được một liên kết thông qua NFC:"</string>
     <string name="summary_confirm_url_open" product="default" msgid="1246398412196449226">"Điện thoại của bạn đã nhận được một liên kết thông qua NFC:"</string>
-    <string name="action_confirm_url_open" msgid="3458322738812921189">"Mở liên kết"</string>
+    <string name="action_confirm_url_open" msgid="3458322738812921189">"Mở đường liên kết"</string>
     <string name="tag_read_error" msgid="2485274498885877547">"Lỗi đọc thẻ NFC. Hãy thử lại."</string>
     <string name="tag_dispatch_failed" msgid="3562984995049738400">"Không có ứng dụng nào hỗ trợ thẻ NFC này"</string>
     <string name="nfc_blocking_alert_title" msgid="1086172436984457085">"NFC có thể bị chặn"</string>
     <string name="nfc_blocking_alert_message" msgid="7003156052570107490">"Nhấn để tìm hiểu cách khắc phục."</string>
+    <string name="nfc_logging_alert_title" msgid="5300867034660942987">"Dữ liệu về NFC đang được ghi lại"</string>
+    <string name="nfc_logging_alert_message" msgid="1550187184825467942">"Nhấn để dừng ghi."</string>
 </resources>

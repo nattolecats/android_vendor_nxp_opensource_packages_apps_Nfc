@@ -29,7 +29,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2018-2021 NXP
+*  Copyright 2018-2022 NXP
 *
 ******************************************************************************/
 package com.android.nfc;
@@ -37,6 +37,7 @@ package com.android.nfc;
 import android.annotation.Nullable;
 import android.nfc.NdefMessage;
 import android.os.Bundle;
+
 import java.io.FileDescriptor;
 import java.io.IOException;
 
@@ -59,12 +60,12 @@ public interface DeviceHost {
          */
         public void onSeListenDeactivated();
 
-        public void onSeInitialized();
-
         /**
          * Notifies SRD event
          */
         public void onNotifySrdEvt(int event);
+
+        public void onNotifyEfdmEvt(int efdmEvt);
 
         /**
          * Notifies P2P Device detected, to activate LLCP link
@@ -82,6 +83,8 @@ public interface DeviceHost {
 
         public void onRemoteFieldDeactivated();
 
+        public void onEeUpdated();
+
         public void onHwErrorReported();
         /**
          * Notifies SWP Reader Events.
@@ -93,6 +96,14 @@ public interface DeviceHost {
         public void onLxDebugConfigData(int len, byte[] data);
 
         public void notifyTagAbort();
+
+        /**
+         * Notifies core generic error notification
+         */
+        void notifyCoreGenericError(int errorCode);
+
+        /** Notifies TZ Secure Zone Notification **/
+        public void onTZNfcSecureZoneReported();
     }
 
     public interface TagEndpoint {
@@ -123,6 +134,15 @@ public interface DeviceHost {
         boolean makeReadOnly();
 
         int getConnectedTechnology();
+
+        /**
+         * Find Ndef only
+         * As per NFC forum test specification ndef write test expects only
+         * ndef detection followed by ndef write. System property
+         * nfc.dta.skipNdefRead added to skip default ndef read before tag
+         * dispatch. This system property is valid only in reader mode.
+         */
+        void findNdef();
     }
 
     public interface TagDisconnectedCallback {
@@ -343,6 +363,16 @@ public interface DeviceHost {
     public String getNfaStorageDir();
 
     /**
+    * Get the committed listen mode routing configuration
+    */
+    byte[] getRoutingTable();
+
+    /**
+    * Get the Max Routing Table size from cache
+    */
+    int getMaxRoutingTableSize();
+
+    /**
      * Start or stop RF polling
      */
     void startStopPolling(boolean enable);
@@ -352,8 +382,6 @@ public interface DeviceHost {
     public boolean accessControlForCOSU (int mode);
 
     public int getFWVersion();
-    public byte[] readerPassThruMode(byte status, byte modulationTyp);
-    public byte[] transceiveAppData(byte[] data);
     boolean isNfccBusy();
     int setTransitConfig(String configs);
     public int getRemainingAidTableSize();
@@ -362,10 +390,24 @@ public interface DeviceHost {
     public int setPreferredSimSlot(int uiccSlot);
     public int doSetFieldDetectMode(boolean mode);
     public boolean isFieldDetectEnabled();
+    public int doStartRssiMode(int rssiNtfTimeIntervalInMillisec);
+    public int doStopRssiMode();
+    public boolean isRssiEnabled();
     public int doWriteT4tData(byte[] fileId, byte[] data, int length);
     public byte[] doReadT4tData(byte[] fileId);
     public boolean doLockT4tData(boolean lock);
     public boolean isLockedT4tData();
     public boolean doClearNdefT4tData();
     public int doEnableDebugNtf(byte fieldValue);
+    public int startExtendedFieldDetectMode(int detectionTimeout);
+    public int stopExtendedFieldDetectMode();
+    public int startCardEmulation();
+    /**
+     * Restarts RF Discovery
+     */
+    void restartRFDiscovery();
+    /**
+     * Enable or Disable the ULPDet Mode based on flag
+     */
+    boolean setULPDetMode(boolean flag);
 }

@@ -16,35 +16,33 @@
 
 package com.android.nfc.handover;
 
-import java.nio.BufferUnderflowException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.nio.charset.Charset;
-import java.util.Arrays;
-import java.util.Random;
-
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothClass;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothUuid;
 import android.bluetooth.OobData;
-import android.content.Context;
-import android.content.Intent;
 import android.nfc.FormatException;
 import android.nfc.NdefMessage;
 import android.nfc.NdefRecord;
+import android.os.Parcel;
 import android.os.ParcelUuid;
-import android.os.UserHandle;
+import android.sysprop.NfcProperties;
 import android.util.Log;
+
+import java.nio.BufferUnderflowException;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
+import java.util.Random;
 
 /**
  * Manages handover of NFC to other technologies.
  */
 public class HandoverDataParser {
     private static final String TAG = "NfcHandover";
-    private static final boolean DBG = false;
+    private static final boolean DBG =
+            NfcProperties.debug_enabled().orElse(false);
 
     private static final byte[] TYPE_BT_OOB = "application/vnd.bluetooth.ep.oob"
             .getBytes(StandardCharsets.US_ASCII);
@@ -627,6 +625,11 @@ public class HandoverDataParser {
         buffer.put(btClass);
         buffer.order(ByteOrder.LITTLE_ENDIAN);
 
-        return new BluetoothClass(buffer.getInt(0));
+        Parcel parcel = Parcel.obtain();
+        parcel.writeInt(buffer.getInt(0));
+        parcel.setDataPosition(0);
+        BluetoothClass bluetoothClass = BluetoothClass.CREATOR.createFromParcel(parcel);
+        parcel.recycle();
+        return bluetoothClass;
     }
 }
