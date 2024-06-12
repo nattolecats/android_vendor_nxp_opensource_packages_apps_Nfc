@@ -563,6 +563,12 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
         }
 
         @Override
+        public boolean setServiceObserveModeDefault(int userId,
+            ComponentName service, boolean enable) {
+            return true;
+        }
+
+        @Override
         public boolean registerAidGroupForService(int userId,
                 ComponentName service, AidGroup aidGroup) throws RemoteException {
             NfcPermissions.validateUserId(userId);
@@ -682,6 +688,12 @@ public class CardEmulationManager implements RegisteredServicesCache.Callback,
             } else {
                 return null;
             }
+        }
+
+        @Override
+        public boolean setServiceEnabledForCategoryOther(int userId,
+                ComponentName app, boolean status) throws RemoteException {
+            return true;
         }
 
         @Override

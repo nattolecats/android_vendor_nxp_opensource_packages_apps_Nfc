@@ -1579,14 +1579,24 @@ public class NfcService implements DeviceHostListener {
             return true;
         }
 
-       public void resonantFrequency(int isResonantFreq)
-       {
+        @Override
+        public boolean isObserveModeSupported() {
+            return true;
+        }
+
+        @Override
+        public boolean setObserveMode(boolean enable) {
+            return enable;
+        }
+
+        public void resonantFrequency(int isResonantFreq)
+        {
             Log.d(TAG, "resonantFrequency");
             if(0x00 != isResonantFreq)
                 mDeviceHost.doResonantFrequency(true);
             else
                 mDeviceHost.doResonantFrequency(false);
-       }
+        }
         @Override
         public boolean disable(boolean saveState) throws RemoteException {
             NfcPermissions.enforceAdminPermissions(mContext);
@@ -2103,6 +2113,21 @@ public class NfcService implements DeviceHostListener {
             NfcPermissions.enforceAdminPermissions(mContext);
             if (!mIsTagAppPrefSupported) throw new UnsupportedOperationException();
             return setTagAppPreferenceInternal(userId, pkg, allow);
+        }
+
+        @Override
+        public boolean enableReaderOption(boolean enable) {
+            return true;
+        }
+
+        @Override
+        public boolean isReaderOptionSupported() {
+            return true;
+        }
+
+        @Override
+        public boolean isReaderOptionEnabled() {
+            return true;
         }
     }
 
