@@ -17,7 +17,14 @@ android_app {
     platform_apis: true,
     certificate: "platform",
     jni_libs: ["libsn100nfc_nci_jni"],
-    libs: ["com.nxp.nfc.nq"],
+    libs: [
+        // order matters: classes in framework-nfc are resolved before framework, meaning
+        // @hide APIs in framework-nfc are resolved before @SystemApi stubs in framework
+        "framework-nfc.impl",
+        "framework",
+
+        "com.nxp.nfc.nq"
+    ],
     static_libs: [
         "android.se.omapi-V1-java",
         "androidx.annotation_annotation",
