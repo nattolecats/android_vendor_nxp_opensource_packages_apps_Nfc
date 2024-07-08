@@ -12,7 +12,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Copyright 2018-2020, 2022 NXP
+ *  Copyright 2018-2020, 2022-2024 NXP
  *
  ******************************************************************************/
 
@@ -35,6 +35,7 @@ extern bool nfc_debug_enabled;
 namespace android {
 extern bool isDiscoveryStarted ();
 extern void startRfDiscovery (bool isStart);
+extern bool isSeRfActive();
 }
 
 MposManager MposManager::mMposMgr;
@@ -139,7 +140,7 @@ tNFA_STATUS MposManager::setMposReaderMode(bool on, std::string readerType) {
   tNFA_STATUS status = NFA_STATUS_REJECTED;
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s:enter, Reader Mode %s, Type %s",
           __FUNCTION__, on ? "ON" : "OFF", readerType.c_str());
-  uint8_t rdrType = mMposMgr.getReaderType(readerType);
+  uint8_t rdrType = mMposMgr.getReaderType(std::move(readerType));
   if (rdrType == NFA_SCR_INVALID) {
     return status;
   }
@@ -231,7 +232,7 @@ uint8_t MposManager::isReaderModeAllowed(const bool on, uint8_t rdrType) {
 
   if (on) {
     /* MPOS Reader mode shall not be started if CE or R/W mode is going on */
-    if (rdrType == NFA_SCR_MPOS && (se.isRfFieldOn() || se.mActivatedInListenMode)) {
+    if (rdrType == NFA_SCR_MPOS && (se.isRfFieldOn() || isSeRfActive())) {
       DLOG_IF(ERROR, nfc_debug_enabled)
           << StringPrintf("Payment is in progress");
       return NFA_STATUS_FAILED;

@@ -29,7 +29,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Copyright 2018-2023 NXP
+ *  Copyright 2018-2024 NXP
  *
  ******************************************************************************/
 
@@ -151,7 +151,7 @@ static bool sGotDeactivate = false;
 static uint32_t sCheckNdefMaxSize = 0;
 static bool sCheckNdefCardReadOnly = false;
 static jboolean sCheckNdefWaitingForComplete = JNI_FALSE;
-static bool sIsTagPresent = true;
+static bool sIsTagPresent = false;
 static tNFA_STATUS sMakeReadonlyStatus = NFA_STATUS_FAILED;
 static jboolean sMakeReadonlyWaitingForComplete = JNI_FALSE;
 static int sCurrentConnectedTargetType = TARGET_TYPE_UNKNOWN;
@@ -161,6 +161,11 @@ static int sCurrentConnectedHandle = 0;
 void nativeNfcTag_doPresenceCheckResult(tNFA_STATUS status);
 void retrySelect(tNFA_INTF_TYPE rfInterface);
 #endif
+static int sIsoDepPresCheckCnt = 0;
+static bool sIsoDepPresCheckAlternate = false;
+static int sPresCheckErrCnt = 0;
+
+static int sPresCheckStatus = 0;
 static int reSelect(tNFA_INTF_TYPE rfInterface, bool fSwitchIfNeeded);
 static bool switchRfInterface(tNFA_INTF_TYPE rfInterface);
 
@@ -209,6 +214,9 @@ void nativeNfcTag_abortWaits() {
   natTag.mCurrentRequestedProtocol = NFC_PROTOCOL_UNKNOWN;
   NfcTagExtns::getInstance().abortTagOperation();
 #endif
+  sIsoDepPresCheckCnt = 0;
+  sPresCheckErrCnt = 0;
+  sIsoDepPresCheckAlternate = false;
 }
 
 /*******************************************************************************
@@ -584,6 +592,10 @@ static jint nativeNfcTag_doConnect(JNIEnv*, jobject, jint targetHandle) {
   int i = targetHandle;
   NfcTag& natTag = NfcTag::getInstance();
   int retCode = NFCSTATUS_SUCCESS;
+
+  sIsoDepPresCheckCnt = 0;
+  sPresCheckErrCnt = 0;
+  sIsoDepPresCheckAlternate = false;
 
   if (i >= NfcTag::MAX_NUM_TECHNOLOGY) {
     LOG(ERROR) << StringPrintf("%s: Handle not found", __func__);
@@ -1199,11 +1211,6 @@ static jbyteArray nativeNfcTag_doTransceive(JNIEnv* e, jobject o,
       LOG(ERROR) << StringPrintf("%s: wait response timeout", __func__);
       if (targetLost)
         *targetLost = 1;  // causes NFC service to throw TagLostException
-#if (NXP_EXTNS == TRUE)
-      if(TARGET_TYPE_ISO14443_4  == sCurrentConnectedTargetType){
-        NfcTag::getInstance().resetActivationState();
-      }
-#endif
       break;
     }
 
@@ -1556,7 +1563,13 @@ TheEnd:
 ** Returns:         None
 **
 *******************************************************************************/
-void nativeNfcTag_resetPresenceCheck() { sIsTagPresent = true; }
+void nativeNfcTag_resetPresenceCheck() {
+  sIsTagPresent = false;
+  sIsoDepPresCheckCnt = 0;
+  sPresCheckErrCnt = 0;
+  sIsoDepPresCheckAlternate = false;
+  sPresCheckStatus = 0;
+}
 
 /*******************************************************************************
 **
@@ -1571,6 +1584,7 @@ void nativeNfcTag_resetPresenceCheck() { sIsTagPresent = true; }
 void nativeNfcTag_doPresenceCheckResult(tNFA_STATUS status) {
   SyncEventGuard guard(sPresenceCheckEvent);
   sIsTagPresent = status == NFA_STATUS_OK;
+  sPresCheckStatus = status;
   sPresenceCheckEvent.notifyOne();
 }
 
@@ -1588,7 +1602,7 @@ void nativeNfcTag_doPresenceCheckResult(tNFA_STATUS status) {
 static jboolean nativeNfcTag_doPresenceCheck(JNIEnv*, jobject) {
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s", __func__);
   tNFA_STATUS status = NFA_STATUS_OK;
-  jboolean isPresent = JNI_FALSE;
+  bool isPresent = false;
 
   // Special case for Kovio.  The deactivation would have already occurred
   // but was ignored so that normal tag opertions could complete.  Now we
@@ -1596,7 +1610,8 @@ static jboolean nativeNfcTag_doPresenceCheck(JNIEnv*, jobject) {
   if (sCurrentConnectedTargetProtocol == TARGET_TYPE_KOVIO_BARCODE) {
     DLOG_IF(INFO, nfc_debug_enabled)
         << StringPrintf("%s: Kovio, force deactivate handling", __func__);
-    tNFA_DEACTIVATED deactivated = {NFA_DEACTIVATE_TYPE_IDLE};
+    tNFA_DEACTIVATED deactivated = {NFA_DEACTIVATE_TYPE_IDLE,
+                                    NCI_DEACTIVATE_REASON_DH_REQ};
     {
       SyncEventGuard g(gDeactivatedEvent);
       gActivated = false;  // guard this variable from multi-threaded access
@@ -1661,19 +1676,110 @@ static jboolean nativeNfcTag_doPresenceCheck(JNIEnv*, jobject) {
 
   {
     SyncEventGuard guard(sPresenceCheckEvent);
+    tNFA_RW_PRES_CHK_OPTION method =
+        NfcTag::getInstance().getPresenceCheckAlgorithm();
 
-    status =
-        NFA_RwPresenceCheck(NfcTag::getInstance().getPresenceCheckAlgorithm());
+    if (sCurrentConnectedTargetProtocol == NFC_PROTOCOL_ISO_DEP) {
+      if (method == NFA_RW_PRES_CHK_ISO_DEP_NAK) {
+        sIsoDepPresCheckCnt++;
+      }
+      if (sIsoDepPresCheckAlternate == true) {
+        method = NFA_RW_PRES_CHK_I_BLOCK;
+      }
+    }
+
+#if (NXP_EXTNS == TRUE)
+    if((sCurrentConnectedTargetProtocol == NFA_PROTOCOL_T2T) &&
+       (sCurrentRfInterface == NFA_INTERFACE_FRAME) &&
+       (!NfcTag::getInstance().isMifareUltralight())) {
+       /* Only applicable for Type2 tag which has SAK value other than 0
+        (as defined in NFC Digital Protocol, section 4.8.2(SEL_RES)) */
+      uint8_t RW_TAG_SLP_REQ[] = {0x50, 0x00};
+      status = NFA_SendRawFrame(RW_TAG_SLP_REQ, sizeof(RW_TAG_SLP_REQ), 0);
+      if (status != NFA_STATUS_OK) {
+        DLOG_IF(ERROR, nfc_debug_enabled) << StringPrintf(
+            "%s: failed to send RW_TAG_SLP_REQ, status=%d", __func__, status);
+      }
+    }
+#endif
+    status = NFA_RwPresenceCheck(method);
     if (status == NFA_STATUS_OK) {
-      sPresenceCheckEvent.wait();
-      isPresent = sIsTagPresent ? JNI_TRUE : JNI_FALSE;
+      isPresent = sPresenceCheckEvent.wait(2000);
+
+      DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+          "%s(%d): isPresent = %d", __FUNCTION__, __LINE__, isPresent);
+
+      if (!sIsTagPresent &&
+          (((sCurrentConnectedTargetProtocol == NFC_PROTOCOL_ISO_DEP) &&
+            (method == NFA_RW_PRES_CHK_ISO_DEP_NAK)) ||
+           ((sPresCheckStatus == NFA_STATUS_RF_FRAME_CORRUPTED) &&
+            ((sCurrentConnectedTargetProtocol == NFC_PROTOCOL_T1T) ||
+             (sCurrentConnectedTargetProtocol == NFC_PROTOCOL_T2T) ||
+             (sCurrentConnectedTargetProtocol == NFC_PROTOCOL_T5T))) ||
+           (sCurrentConnectedTargetProtocol == NFC_PROTOCOL_T3T))) {
+        sPresCheckErrCnt++;
+#if (NXP_EXTNS == TRUE)
+        int retryCount =
+            NfcConfig::getUnsigned(NAME_PRESENCE_CHECK_RETRY_COUNT,
+                                   DEFAULT_PRESENCE_CHECK_RETRY_COUNT);
+        while (sPresCheckErrCnt <= retryCount) {
+          DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+              "%s(%d): pres check failed, try again (attempt #%d/%d)",
+              __FUNCTION__, __LINE__, sPresCheckErrCnt, retryCount);
+#else
+        while (sPresCheckErrCnt <= 3) {
+          DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+              "%s(%d): pres check failed, try again (attempt #%d/3)",
+              __FUNCTION__, __LINE__, sPresCheckErrCnt);
+#endif
+
+          status = NFA_RwPresenceCheck(method);
+
+          if (status == NFA_STATUS_OK) {
+            isPresent = sPresenceCheckEvent.wait(2000);
+            DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+                "%s(%d): isPresent = %d", __FUNCTION__, __LINE__, isPresent);
+
+            if (!isPresent) {
+              break;
+            } else if (isPresent && sIsTagPresent) {
+              sPresCheckErrCnt = 0;
+              break;
+            } else {
+              sPresCheckErrCnt++;
+            }
+          }
+        }
+      }
+
+      if (isPresent && (sIsoDepPresCheckCnt == 1) && !sIsTagPresent) {
+        DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+            "%s(%d): Try alternate method in case tag does not support RNAK",
+            __FUNCTION__, __LINE__);
+
+        method = NFA_RW_PRES_CHK_I_BLOCK;
+        sIsoDepPresCheckAlternate = true;
+        status = NFA_RwPresenceCheck(method);
+
+        if (status == NFA_STATUS_OK) {
+          isPresent = sPresenceCheckEvent.wait(2000);
+          DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf(
+              "%s(%d): isPresent = %d", __FUNCTION__, __LINE__, isPresent);
+        }
+      }
+
+      isPresent = isPresent && sIsTagPresent;
     }
   }
 
-  if (isPresent == JNI_FALSE)
+  if (!isPresent) {
     DLOG_IF(INFO, nfc_debug_enabled)
         << StringPrintf("%s: tag absent", __func__);
-  return isPresent;
+
+    nativeNfcTag_resetPresenceCheck();
+  }
+
+  return isPresent ? JNI_TRUE : JNI_FALSE;
 }
 
 /*******************************************************************************

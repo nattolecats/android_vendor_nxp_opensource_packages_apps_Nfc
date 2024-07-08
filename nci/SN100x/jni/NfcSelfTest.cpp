@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2019-2022 NXP
+ *  Copyright 2019-2024 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@
 #include "NfcSelfTest.h"
 #include "NfcJniUtil.h" // for JNIEnv, jobject & jint
 #include "nfc_config.h"
+#include <android-base/logging.h>
 
 /* Declaration of the singleTone class(static member) */
 NfcSelfTest NfcSelfTest::sSelfTestMgr;
@@ -38,6 +39,7 @@ extern bool isDiscoveryStarted();
 extern void startRfDiscovery(bool isStart);
 extern int nfcManager_doPartialInitialize(JNIEnv* e, jobject o, jint mode);
 extern int nfcManager_doPartialDeInitialize(JNIEnv*, jobject);
+extern tNFA_STATUS NxpNfc_Write_Cmd_Common(uint8_t retlen, uint8_t* buffer);
 }  // namespace android
 tNFC_chipType NFC_GetChipType();
 
@@ -102,7 +104,7 @@ tNFA_STATUS NfcSelfTest::PerformPrbs(bool on) {
 static void NxpResponse_SelfTest_Cb(uint8_t event, uint16_t param_len,
                                     uint8_t* p_param) {
   (void)event;
-  DLOG_IF(INFO, nfc_debug_enabled)
+  LOG(INFO)
       << StringPrintf("%s Received length data = 0x%x status = 0x%x", __func__,
                       param_len, p_param[3]);
 
@@ -134,7 +136,7 @@ uint8_t NfcSelfTest::GetCmdBuffer(uint8_t* aCmdBuf, uint8_t aType) {
    * CLIF Reg:    0x4E 0x50 0x4F 0x4E 0x4F 0x50
    */
 
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("Command type is %d", aType);
+  LOG(INFO) << StringPrintf("Command type is %d", aType);
   switch (aType) {
     case CMD_TYPE_CORE_RESET: {
       uint8_t CMD_CORE_RESET[] = {0x20, 0x00, 0x01, 0x00};
@@ -292,7 +294,7 @@ uint8_t NfcSelfTest::GetCmdBuffer(uint8_t* aCmdBuf, uint8_t aType) {
       if (NfcConfig::hasKey(NAME_NXP_SPC_CONF_BLK))
         spc_cfg = NfcConfig::getBytes(NAME_NXP_SPC_CONF_BLK);
       if (spc_cfg.size() == 4) {
-        LOG_IF(INFO, nfc_debug_enabled)
+        LOG(INFO)
             << StringPrintf("NXP_SPC_CFG, SN220, 0x%02X%02X%02X%02X", spc_cfg[0], spc_cfg[1], spc_cfg[2], spc_cfg[3]);
         CMD_SPC_NTF_EN[10] = spc_cfg[0];
         CMD_SPC_NTF_EN[11] = spc_cfg[1];
@@ -515,10 +517,35 @@ uint8_t NfcSelfTest::GetCmdBuffer(uint8_t* aCmdBuf, uint8_t aType) {
       break;
     }
     default:
-      DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("Command not supported");
+      LOG(INFO) << StringPrintf("Command not supported");
       break;
   }
   return cmdLen;
+}
+
+/*******************************************************************************
+ ** Sends NFCC cmd to enable/select default eUICC port
+ ** @param type - defines the port to be selected
+ ** @return status of NFCC write cmd
+ *******************************************************************************/
+static int SeteUICCdefalutPort(uint8_t type) {
+  tNFA_STATUS status = NFA_STATUS_REJECTED;
+  uint8_t cmd_setport[] = {0x20, 0x02, 0x05, 0x01,
+                           0xA1, 0x97, 0x01, 0x00 /* port num */};
+
+  if (type == TEST_TYPE_SELECT_EUICC_PORT_1) {
+    cmd_setport[7] = 0x00;
+  } else if (type == TEST_TYPE_SELECT_EUICC_PORT_2) {
+    cmd_setport[7] = 0x01;
+  } else {
+    return NFA_STATUS_REJECTED;
+  }
+  if (isDiscoveryStarted()) startRfDiscovery(false);
+
+  status = NxpNfc_Write_Cmd_Common(sizeof(cmd_setport), cmd_setport);
+
+  if (!isDiscoveryStarted()) startRfDiscovery(true);
+  return status;
 }
 
 /*******************************************************************************
@@ -528,8 +555,9 @@ uint8_t NfcSelfTest::GetCmdBuffer(uint8_t* aCmdBuf, uint8_t aType) {
  *******************************************************************************/
 tNFA_STATUS NfcSelfTest::doNfccSelfTest(int aType) {
   tNFA_STATUS status = NFA_STATUS_FAILED;
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("Self-Test Type %d", aType);
+  LOG(INFO) << StringPrintf("Self-Test Type %d", aType);
   SelfTestType = aType;
+  uint8_t clk_freq = 4; //4 for 26MHz and 5 for 38.4 MHz.
 
   switch (aType) {
     case TEST_TYPE_RESTORE_RFTXCFG:
@@ -557,10 +585,14 @@ tNFA_STATUS NfcSelfTest::doNfccSelfTest(int aType) {
       status = PerformPrbs(false);
       break;
     case TEST_TYPE_SPC:
-      status = PerformSPCTest();
+      status = PerformSPCTest(clk_freq);
+      break;
+    case TEST_TYPE_SELECT_EUICC_PORT_1:
+    case TEST_TYPE_SELECT_EUICC_PORT_2:
+      status = SeteUICCdefalutPort(aType);
       break;
     default:
-      DLOG_IF(ERROR, nfc_debug_enabled)
+      LOG(ERROR)
           << StringPrintf("Self-test type invalid/not supported");
       SelfTestType = TEST_TYPE_NONE;
       break;
@@ -590,7 +622,7 @@ tNFA_STATUS NfcSelfTest::PerformRFTest(bool on) {
   }
 
   status = executeCmdSeq(RFTestCmdSeq, sizeof(RFTestCmdSeq));
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("status=%u", status);
+  LOG(INFO) << StringPrintf("status=%u", status);
   return status;
 }
 
@@ -635,7 +667,7 @@ tNFA_STATUS NfcSelfTest::PerformTransacAB(uint8_t aType) {
         gselfTestData.NxpSelfTestEvt.wait(2 * ONE_SECOND_MS);
     }
   } else {
-    DLOG_IF(INFO, nfc_debug_enabled)
+    LOG(INFO)
         << StringPrintf("failed in to reset and init NFCC");
   }
 
@@ -664,7 +696,7 @@ tNFA_STATUS NfcSelfTest::PerformTransacAB(uint8_t aType) {
 
   NFA_SetEmvCoState(false);
   startRfDiscovery(false);
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("exiting status=%u", status);
+  LOG(INFO) << StringPrintf("exiting status=%u", status);
   return status;
 }
 
@@ -728,7 +760,7 @@ tNFA_STATUS NfcSelfTest::PerformResonantFreq(bool on) {
   else
     status = restoreRfTxCfg();
 
-  DLOG_IF(INFO, nfc_debug_enabled)
+  LOG(INFO)
       << StringPrintf(" PerformResonantFreq status=%u", status);
 
   return status;
@@ -750,7 +782,7 @@ static void nfaVSCNtfCallback(uint8_t event, uint16_t param_len, uint8_t *p_para
 
     uint16_t trim_val = (p_param[7 + offset] << 8) + p_param[8 + offset];
     uint16_t spc_rssi = (p_param[6 + offset] << 8) + p_param[5 + offset];
-    LOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s MIN_RSSI[%X] at Customer phase"
+    LOG(INFO) << StringPrintf("%s MIN_RSSI[%X] at Customer phase"
             "trim value[%X]. min RSSI start index is %X & end index is %X", __func__,
             spc_rssi, trim_val, p_param[3], p_param[4]);
     SyncEventGuard guard (sNfaVscNtfEvent);
@@ -761,12 +793,11 @@ static void nfaVSCNtfCallback(uint8_t event, uint16_t param_len, uint8_t *p_para
 /*******************************************************************************
  ** Executes: Configures the FW and starts the SPC algorithm to save the customer
  **           phase offset into RF_CUST_PHASE_COMPENSATION.
- ** @param    None
+ ** @param    clk_freq - clock frequency to be used for SPC test
  ** @return status SUCCESS or FAILED.
  *******************************************************************************/
-tNFA_STATUS NfcSelfTest::PerformSPCTest() {
+tNFA_STATUS NfcSelfTest::PerformSPCTest(uint8_t clk_freq) {
   tNFA_STATUS status = NFA_STATUS_FAILED;
-  uint8_t clk_freq = 4; //4 for 26MHz and 5 for 38.4 MHz.
   uint8_t SPC26MHzTestCmdSeq[] = {CMD_TYPE_CORE_RESET, CMD_TYPE_CORE_INIT,
           CMD_TYPE_NFCC_ALLOW_CHANGE_PARAM, CMD_TYPE_NXP_PROP_EXT, CMD_TYPE_SPC_NTF_EN,
           CMD_TYPE_SPC_26MHZ_BLK1, CMD_TYPE_SPC_26MHZ_BLK2, CMD_TYPE_SPC_26MHZ_BLK3, CMD_TYPE_SPC_START};
@@ -786,7 +817,7 @@ tNFA_STATUS NfcSelfTest::PerformSPCTest() {
   uint8_t SPCTestPostCmdSeq_SN220[] = {CMD_TYPE_NFCC_STANDBY_ON};
 
   if(nfcManager_isNfcActive()) {
-    DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("Nfc needs to be turned off");
+    LOG(INFO) << StringPrintf("Nfc needs to be turned off");
     return status;
   }
   if (NFA_STATUS_OK ==
@@ -795,7 +826,7 @@ tNFA_STATUS NfcSelfTest::PerformSPCTest() {
       return status;
     }
 
-    DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("PerformSPCTest, clk_freq(%d)", clk_freq);
+    LOG(INFO) << StringPrintf("PerformSPCTest, clk_freq(%d)", clk_freq);
     if(NFC_GetChipType() >= sn220u){
       if(clk_freq == 4)
         status = executeCmdSeq(SPC26MHzTestCmdSeq_SN220, sizeof(SPC26MHzTestCmdSeq_SN220));
@@ -822,7 +853,7 @@ tNFA_STATUS NfcSelfTest::PerformSPCTest() {
     NFA_RegVSCback (false,nfaVSCNtfCallback); //DeRegister CallBack for VS NTF
     android::nfcManager_doPartialDeInitialize(NULL, NULL);
   }
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("status=%u", status);
+  LOG(INFO) << StringPrintf("status=%u", status);
   return status;
 }
 /*******************************************************************************
@@ -839,8 +870,7 @@ tNFA_STATUS NfcSelfTest::executeCmdSeq(uint8_t* aCmdType, uint8_t aNumOfCmds) {
     cmdLen = GetCmdBuffer(cmdBuf, aCmdType[count]);
     if (cmdLen == 0) {
       status = NFA_STATUS_FAILED;
-      DLOG_IF(ERROR, nfc_debug_enabled)
-          << StringPrintf("Failed to get command buffer");
+      LOG(ERROR) << StringPrintf("Failed to get command buffer");
     } else {
       if (gselfTestData.fSetResFreq &&
           (CMD_TYPE_CORE_GET_CONFIG_RFTXCFG0 <= aCmdType[count] &&
@@ -855,11 +885,11 @@ tNFA_STATUS NfcSelfTest::executeCmdSeq(uint8_t* aCmdType, uint8_t aNumOfCmds) {
         if (aCmdType[count] == CMD_TYPE_CORE_RESET) {
           usleep(1000 * 100);
         }
-        DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("Command Success");
+        LOG(INFO) << StringPrintf("Command Success");
       } else {
         SetSelfTestCbStatus(NFA_STATUS_FAILED);
         status = NFA_STATUS_FAILED; /* Response Timeout: break the loop */
-        DLOG_IF(ERROR, nfc_debug_enabled) << StringPrintf("Command Failed");
+        LOG(ERROR) << StringPrintf("Command Failed");
       }
     }
     /*Loop Break: 1. GetCmdBuffer() failed to get command.

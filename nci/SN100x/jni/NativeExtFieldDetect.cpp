@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2021-2022 NXP
+ *  Copyright 2021-2024 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -84,10 +84,12 @@ int NativeExtFieldDetect::startExtendedFieldDetectMode(JNIEnv* e, jobject o,
   }
   int efdStatus = EFDSTATUS_FAILED;
   uint8_t num = 0x00;
-  const uint8_t EXTENDED_FIELD_TAG_ENABLE = 0x01;
+  const uint8_t EXTENDED_FIELD_TAG_WITHOUT_CMA_ENABLE = 0x01;
+  const uint8_t EXTENDED_FIELD_TAG_WITH_CMA_ENABLE = 0x03;
   if (NfcConfig::hasKey(NAME_NXP_EXTENDED_FIELD_DETECT_MODE)) {
     num = NfcConfig::getUnsigned(NAME_NXP_EXTENDED_FIELD_DETECT_MODE);
-    if (num != EXTENDED_FIELD_TAG_ENABLE) {
+    if (!(num == EXTENDED_FIELD_TAG_WITHOUT_CMA_ENABLE ||
+          num == EXTENDED_FIELD_TAG_WITH_CMA_ENABLE)) {
       return EFDSTATUS_ERROR_FEATURE_DISABLED_IN_CONFIG;
     }
   } else {
@@ -140,6 +142,11 @@ int NativeExtFieldDetect::stopExtendedFieldDetectMode(JNIEnv* e, jobject o) {
 
   if (!android::nfcManager_isNfcActive() ||
       android::nfcManager_isNfcDisabling()) {
+    DLOG_IF(INFO, nfc_debug_enabled)
+      << StringPrintf("%s: Nfc is Disabled or currently being disabled", __func__);
+    mEfdmTimer.kill();
+    mIsefdmStarted = false;
+
     return EFDSTATUS_ERROR_NFC_IS_OFF;
   } else if (!mIsefdmStarted) {
     return EFDSTATUS_ERROR_NOT_STARTED;
@@ -264,7 +271,7 @@ void NativeExtFieldDetect::postEfdmTimeoutEvt(union sigval) {
   NativeExtFieldDetect& nEfdm = NativeExtFieldDetect::getInstance();
   JNIEnv* e = NULL;
 
-  if (NULL == nEfdm.mNativeData) {
+  if (NULL == nEfdm.mNativeData || !nEfdm.mIsefdmStarted) {
     return;
   }
   ScopedAttach attach(nEfdm.mNativeData->vm, &e);

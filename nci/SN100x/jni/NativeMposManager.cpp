@@ -12,7 +12,7 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  *
- *  Copyright 2018-2020, 2022 NXP
+ *  Copyright 2018-2020, 2022-2023 NXP
  *
  ******************************************************************************/
 #include "MposManager.h"
@@ -83,31 +83,6 @@ static bool nativeNfcMposManager_doMposGetReaderMode(JNIEnv*, jobject)
   }
   DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("isEnabled =%x", isEnabled);
   return isEnabled;
-}
-
-/*******************************************************************************
-**
-** Function:        nativeNfcMcrManage_doConfigureSecureReaderMode
-**
-** Description:     e: JVM environment.
-**                  o: Java object.
-**                  on: Set/Reset the MPOS reader mode
-**                  rdrType: Requested Reader Type. e.g. "MPOS"
-**
-** Returns:         SUCCESS/FAILED/BUSY/REJECTED.
-**
-*******************************************************************************/
-static int nativeNfcMcrManage_doConfigureSecureReaderMode(JNIEnv* e, jobject, bool on,
-                                                    jstring rdrType) {
-  tNFA_STATUS status = NFA_STATUS_REJECTED;
-  std::string readertype = ConvertJavaStrToStdString(e, rdrType);
-  DLOG_IF(INFO, nfc_debug_enabled) << StringPrintf("%s:enter", __func__);
-#ifdef FEATURE_SECURE_READER
-  /* The functionality of Mifare Classic reader over eSE is some what same as
-   * MPOS. Hence, reusing the existing code */
-  status = MposManager::getInstance().setMposReaderMode(on, readertype);
-#endif
-  return status;
 }
 
 /*******************************************************************************
@@ -198,8 +173,6 @@ static JNINativeMethod gMethods[] = {
      (void*)nativeNfcMposManage_doMposSetReaderMode},
     {"doMposGetReaderMode", "()Z",
      (void*)nativeNfcMposManager_doMposGetReaderMode},
-    {"doConfigureSecureReaderMode", "(ZLjava/lang/String;)I",
-     (void*)nativeNfcMcrManage_doConfigureSecureReaderMode},
 
     {"doStopPoll", "(I)V", (void*)nativeNfcMposManage_doStopPoll},
 

@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- *  Copyright 2019-2022 NXP
+ *  Copyright 2019-2024 NXP
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@
 #pragma once
 
 #include <android-base/stringprintf.h>
-#include <base/logging.h>
 #include <string.h>
 #include "SyncEvent.h"
 #include "data_types.h"
@@ -101,6 +100,8 @@ enum NFCCSELFTESTTYPE {
   TEST_TYPE_PRBS_ON,
   TEST_TYPE_PRBS_OFF,
   TEST_TYPE_SPC,
+  TEST_TYPE_SELECT_EUICC_PORT_1,
+  TEST_TYPE_SELECT_EUICC_PORT_2,
   TEST_TYPE_NONE = 0xFF
 };
 
@@ -212,10 +213,10 @@ class NfcSelfTest {
   /**
    * Executes: Configures the FW and starts the SPC algorithm to save the customer
    *           phase offset into RF_CUST_PHASE_COMPENSATION.
-   * @param    None
+   * @param    clk_freq - clock frequency to be used for SPC test
    * @return status SUCCESS or FAILED.
    */
-  tNFA_STATUS PerformSPCTest();
+  tNFA_STATUS PerformSPCTest(uint8_t clk_freq);
   /*******************************************************************************
    ** Executes: Perform Prbs
    ** @param  on denotes

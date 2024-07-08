@@ -1,20 +1,20 @@
 /******************************************************************************
-*
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*  http://www.apache.org/licenses/LICENSE-2.0
-*
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
-*
-*  Copyright 2018-2023 NXP
-*
-******************************************************************************/
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *  Copyright 2018-2024 NXP
+ *
+ ******************************************************************************/
 
 #pragma once
 #include "NfcJniUtil.h"
@@ -34,6 +34,8 @@
 #define NFA_EE_TAG_HCI_HOST_ID 0xA0 /* HCI host ID */
 #define SMX_ESE_PIPE_ID 0x19
 #define SMX_EUICC_PIPE_ID 0x27
+#define SMB_DPD_MONITOR_EVT_MASK 0x04
+#define DPD_MONITOR_BYTE_OFFSET 2
 #if (NXP_EXTNS == TRUE)
 typedef enum {
   UICC_01_SELECTED_ENABLED = 0x01,
@@ -53,6 +55,7 @@ public:
   static const uint8_t UICC2_ID = 0x03;
   static const uint8_t UICC3_ID = 0x04;
   static const uint8_t EUICC_ID = 0x05;
+  static const uint8_t EUICC2_ID = 0x06;
   static const uint8_t ESE_ID = 0x01;
   static const uint8_t DH_ID = 0x00;
   static const uint8_t T4T_NFCEE_ID = 0x7F;
@@ -77,6 +80,7 @@ public:
   tNFA_HANDLE EE_HANDLE_0xF4;   //handle to secure element in slot 1
   static const tNFA_HANDLE EE_HANDLE_0xF3 = 0x4C0;//0x401; //handle to secure element in slot 0
   static const tNFA_HANDLE EE_HANDLE_0xF5 = 0x4C1;  // eUICC handle
+  static const tNFA_HANDLE EE_HANDLE_0xF6 = 0x4C2;  // eUICC2 handle
   static const tNFA_HANDLE EE_HANDLE_0xF8 = 0x481; //handle to secure element in slot 2
   static const tNFA_HANDLE EE_HANDLE_0xF9 = 0x482; //handle to secure element in slot 3
   static const tNFA_HANDLE EE_HANDLE_0xF0 = 0x400;//NFCEE handle for host
@@ -233,7 +237,6 @@ public:
 #if(NXP_EXTNS == TRUE)
  bool mRfFieldIsOn;            // last known RF field state
 #endif
- bool mActivatedInListenMode;  // whether we're activated in listen mode
  /*******************************************************************************
  **
  ** Function:        getInstance
@@ -265,17 +268,6 @@ public:
  **
  *******************************************************************************/
  bool initialize(nfc_jni_native_data* native);
- /*******************************************************************************
- **
- ** Function:        isActivatedInListenMode
- **
- ** Description:     Can be used to determine if the SE is activated in listen
- *mode
- **
- ** Returns:         True if the SE is activated in listen mode
- **
- *******************************************************************************/
- bool isActivatedInListenMode();
  /*******************************************************************************
  **
  ** Function:        transceive
@@ -468,16 +460,6 @@ public:
  **
  *******************************************************************************/
  tNFA_HANDLE getActiveEeHandle(tNFA_HANDLE eeHandle = EE_HANDLE_0xF3);
- /*******************************************************************************
- **
- ** Function         getLastRfFiledToggleTime
- **
- ** Description      Provides the last RF filed toggile timer
- **
- ** Returns          timespec
- **
- *******************************************************************************/
- struct timespec getLastRfFiledToggleTime(void);
  /*******************************************************************************
  **
  ** Function         setNfccPwrConfig

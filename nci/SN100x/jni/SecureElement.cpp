@@ -1,20 +1,20 @@
 /******************************************************************************
-*
-*  Licensed under the Apache License, Version 2.0 (the "License");
-*  you may not use this file except in compliance with the License.
-*  You may obtain a copy of the License at
-*
-*  http://www.apache.org/licenses/LICENSE-2.0
-*
-*  Unless required by applicable law or agreed to in writing, software
-*  distributed under the License is distributed on an "AS IS" BASIS,
-*  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-*  See the License for the specific language governing permissions and
-*  limitations under the License.
-*
-*  Copyright 2018-2023 NXP
-*
-******************************************************************************/
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *  http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ *  Copyright 2018-2024 NXP
+ *
+ ******************************************************************************/
 
 #include "SecureElement.h"
 #include <nativehelper/ScopedLocalRef.h>
@@ -26,6 +26,7 @@
 #include <errno.h>
 #include "config.h"
 #include "nfc_config.h"
+#include "NativeJniExtns.h"
 #include "RoutingManager.h"
 #include "HciEventManager.h"
 #include "MposManager.h"
@@ -57,48 +58,46 @@ uint8_t  SecureElement::mStaticPipeProp;
 ** Returns:         None
 **
 *******************************************************************************/
-SecureElement::SecureElement() :
-    mActiveEeHandle(NFA_HANDLE_INVALID),
-    mNewPipeId (0),
-    mIsWiredModeOpen (false),
-    mIsSeIntfActivated(false),
-    SmbTransceiveTimeOutVal(0),
-    mErrorRecovery(false),
-    EE_HANDLE_0xF4(0),
-    muicc2_selected(0),
-    mNativeData(NULL),
-    mthreadnative(NULL),
-    mbNewEE (true),
-    mIsInit (false),
-    mTransceiveWaitOk (false),
-    mGetAtrRspwait (false),
-    mAbortEventWaitOk (false),
-    mNewSourceGate (0),
-    mAtrStatus (0),
-    mAtrRespLen (0),
-    mNumEePresent (0),
-    mCreatedPipe (0),
-    mRfFieldIsOn(false),
-    mActivatedInListenMode (false)
-{
-    mPwrCmdstatus = NFA_STATUS_FAILED;
-    mModeSetNtfstatus = NFA_STATUS_FAILED;
-    mNfccPowerMode = 0;
-    mTransceiveStatus = NFA_STATUS_FAILED;
-    mCommandStatus = NFA_STATUS_FAILED;
-    mNfaHciHandle = NFA_HANDLE_INVALID;
-    mActualResponseSize = 0;
-    mAtrInfolen = 0;
-    mActualNumEe = 0;
-    memset (&mEeInfo, 0, nfcFL.nfccFL._NFA_EE_MAX_EE_SUPPORTED *sizeof(tNFA_EE_INFO));
-    memset (mAidForEmptySelect, 0, sizeof(mAidForEmptySelect));
-    memset (mVerInfo, 0, sizeof(mVerInfo));
-    memset (mAtrInfo, 0, sizeof(mAtrInfo));
-    memset (mResponseData, 0, sizeof(mResponseData));
-    memset (mAtrRespData, 0, sizeof(mAtrRespData));
-    memset (&mHciCfg, 0, sizeof(mHciCfg));
-    memset (&mLastRfFieldToggle, 0, sizeof(mLastRfFieldToggle));
-    memset (&mNfceeData_t, 0, sizeof(mNfceeData));
+SecureElement::SecureElement()
+    : mActiveEeHandle(NFA_HANDLE_INVALID),
+      mNewPipeId(0),
+      mIsWiredModeOpen(false),
+      mIsSeIntfActivated(false),
+      SmbTransceiveTimeOutVal(0),
+      mErrorRecovery(false),
+      EE_HANDLE_0xF4(0),
+      muicc2_selected(0),
+      mNativeData(NULL),
+      mthreadnative(NULL),
+      mbNewEE(true),
+      mIsInit(false),
+      mTransceiveWaitOk(false),
+      mGetAtrRspwait(false),
+      mAbortEventWaitOk(false),
+      mNewSourceGate(0),
+      mAtrStatus(0),
+      mAtrRespLen(0),
+      mNumEePresent(0),
+      mCreatedPipe(0),
+      mRfFieldIsOn(false) {
+  mPwrCmdstatus = NFA_STATUS_FAILED;
+  mModeSetNtfstatus = NFA_STATUS_FAILED;
+  mNfccPowerMode = 0;
+  mTransceiveStatus = NFA_STATUS_FAILED;
+  mCommandStatus = NFA_STATUS_FAILED;
+  mNfaHciHandle = NFA_HANDLE_INVALID;
+  mActualResponseSize = 0;
+  mAtrInfolen = 0;
+  mActualNumEe = 0;
+  memset(&mEeInfo, 0, MAX_NUM_EE * sizeof(tNFA_EE_INFO));
+  memset(mAidForEmptySelect, 0, sizeof(mAidForEmptySelect));
+  memset(mVerInfo, 0, sizeof(mVerInfo));
+  memset(mAtrInfo, 0, sizeof(mAtrInfo));
+  memset(mResponseData, 0, sizeof(mResponseData));
+  memset(mAtrRespData, 0, sizeof(mAtrRespData));
+  memset(&mHciCfg, 0, sizeof(mHciCfg));
+  memset(&mLastRfFieldToggle, 0, sizeof(mLastRfFieldToggle));
+  memset(&mNfceeData_t, 0, sizeof(mNfceeData));
 }
 /*******************************************************************************
 **
@@ -141,7 +140,6 @@ bool SecureElement::initialize(nfc_jni_native_data* native) {
     memset (mEeInfo, 0, sizeof(mEeInfo));
     memset (&mHciCfg, 0, sizeof(mHciCfg));
     memset(mAidForEmptySelect, 0, sizeof(mAidForEmptySelect));
-    mActivatedInListenMode = false;
     muicc2_selected = NfcConfig::getUnsigned(NAME_NXP_DEFAULT_UICC2_SELECT, UICC2_ID);
 
     SmbTransceiveTimeOutVal = NfcConfig::getUnsigned(NAME_NXP_SMB_TRANSCEIVE_TIMEOUT, WIRED_MODE_TRANSCEIVE_TIMEOUT);
@@ -189,17 +187,7 @@ bool SecureElement::initialize(nfc_jni_native_data* native) {
     LOG(INFO) << StringPrintf("%s: exit", fn);
     return (true);
 }
-/*******************************************************************************
-**
-** Function:        isActivatedInListenMode
-**
-** Description:     Can be used to determine if the SE is activated in listen
-*mode
-**
-** Returns:         True if the SE is activated in listen mode
-**
-*******************************************************************************/
-bool SecureElement::isActivatedInListenMode() { return mActivatedInListenMode; }
+
 /*******************************************************************************
 **
 ** Function:        getGenericEseId
@@ -219,22 +207,29 @@ jint SecureElement::getGenericEseId(tNFA_HANDLE handle) {
     if(handle == (EE_HANDLE_0xF3 & ~NFA_HANDLE_GROUP_EE) ) //ESE - 0xC0
     {
         ret = ESE_ID;
-    }
-    else if(handle ==  (SecureElement::getInstance().EE_HANDLE_0xF4 & ~NFA_HANDLE_GROUP_EE) ) //UICC - 0x02
+    } else if (handle ==
+               (EE_HANDLE_0xF4 & ~NFA_HANDLE_GROUP_EE))  // UICC - 0x02
     {
         ret = UICC_ID;
     }
-    if(handle ==  (EE_HANDLE_0xF8 & ~NFA_HANDLE_GROUP_EE)) //UICC2 - 0x04
+    if (handle == (EE_HANDLE_0xF8 & ~NFA_HANDLE_GROUP_EE))  // UICC2 - 0x03
     {
         ret = UICC2_ID;
-    }
-    else if (handle == (EE_HANDLE_0xF9 & ~NFA_HANDLE_GROUP_EE)) //UICC2 - 0x04
+    } else if (handle ==
+               (EE_HANDLE_0xF9 & ~NFA_HANDLE_GROUP_EE))  // UICC3 - 0x04
     {
         ret = UICC3_ID;
-    }
-    else if (handle == (EE_HANDLE_0xF5 & ~NFA_HANDLE_GROUP_EE)) //EUICC - 0xC1
+    } else if (handle ==
+               (EE_HANDLE_0xF5 & ~NFA_HANDLE_GROUP_EE))  // EUICC - 0xC1
     {
         ret = EUICC_ID;
+    } else if (handle ==
+               (EE_HANDLE_0xF6 & ~NFA_HANDLE_GROUP_EE))  // EUICC2 - 0xC2
+    {
+        ret = EUICC2_ID;
+    } else if (handle == (EE_HANDLE_0xFE & ~NFA_HANDLE_GROUP_EE))  // T4T - 0x10
+    {
+        ret = T4T_NFCEE_ID;
     }
     LOG(INFO) << StringPrintf("%s: exit; ESE-Generic-ID = 0x%02X", fn, ret);
     return ret;
@@ -321,8 +316,6 @@ void SecureElement::notifyListenModeState (bool isActivated) {
                 << StringPrintf("%s: jni env is null", fn);
         return;
     }
-
-    mActivatedInListenMode = isActivated;
 
     if (mNativeData != NULL) {
         if (isActivated) {
@@ -731,13 +724,17 @@ void SecureElement::nfaHciCallback(tNFA_HCI_EVT event,
         else if (eventData->rcvd_evt.evt_code == NFA_HCI_EVT_CONNECTIVITY)
         {
             LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_RCVD_EVT; NFA_HCI_EVT_CONNECTIVITY", fn);
-        }
-        else
-        {
+        } else if (eventData->rcvd_evt.evt_code == NFA_HCI_EVT_DPD_MONITOR) {
+            if ((eventData->rcvd_evt.p_evt_buf[eventData->rcvd_evt.evt_len -
+                                               DPD_MONITOR_BYTE_OFFSET] &
+                 SMB_DPD_MONITOR_EVT_MASK)) {
+                NativeJniExtns::getInstance().notifyNfcEvent(
+                    "handleDPDMonitorNtf");
+            }
+        } else {
             LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_RCVD_EVT; ################################### eventData->rcvd_evt.evt_code = 0x%x , NFA_HCI_EVT_CONNECTIVITY = 0x%x", fn, eventData->rcvd_evt.evt_code, NFA_HCI_EVT_CONNECTIVITY);
 
             LOG(INFO) << StringPrintf("%s: NFA_HCI_EVENT_RCVD_EVT; ################################### ", fn);
-
         }
         break;
 
@@ -933,49 +930,21 @@ TheEnd:
 *******************************************************************************/
 jintArray SecureElement::getActiveSecureElementList (JNIEnv* e)
 {
-    uint8_t num_of_nfcee_present = 0;
-    tNFA_HANDLE nfcee_handle[MAX_NFCEE];
-    tNFA_EE_STATUS nfcee_status[MAX_NFCEE];
-    jint seId = 0;
-    int cnt = 0;
-    int i;
+  if (!getEeInfo()) return (NULL);
 
-    if (! getEeInfo())
-        return (NULL);
-
-    num_of_nfcee_present = mNfceeData_t.mNfceePresent;
-
-    jintArray list = e->NewIntArray (num_of_nfcee_present); //allocate array
-
-    for(i = 0; i< num_of_nfcee_present ; i++)
-    {
-        nfcee_handle[i] = mNfceeData_t.mNfceeHandle[i];
-        nfcee_status[i] = mNfceeData_t.mNfceeStatus[i];
-
-        if(nfcee_handle[i] == EE_HANDLE_0xF3 && nfcee_status[i] == NFC_NFCEE_STATUS_ACTIVE)
-        {
-            seId = getGenericEseId(EE_HANDLE_0xF3 & ~NFA_HANDLE_GROUP_EE);
-        }
-
-        if(nfcee_handle[i] == EE_HANDLE_0xF4 && nfcee_status[i] == NFC_NFCEE_STATUS_ACTIVE)
-        {
-            seId = getGenericEseId(EE_HANDLE_0xF4 & ~NFA_HANDLE_GROUP_EE);
-        }
-
-        if (nfcee_handle[i] == EE_HANDLE_0xF5 &&
-            nfcee_status[i] == NFC_NFCEE_STATUS_ACTIVE) {
-          seId = getGenericEseId(EE_HANDLE_0xF5 & ~NFA_HANDLE_GROUP_EE);
-        }
-
-        if(nfcee_handle[i] == EE_HANDLE_0xF8 && nfcee_status[i] == NFC_NFCEE_STATUS_ACTIVE)
-        {
-            seId = getGenericEseId(EE_HANDLE_0xF8 & ~NFA_HANDLE_GROUP_EE);
-        }
-
-        e->SetIntArrayRegion (list, cnt++, 1, &seId);
+  jint seId = 0xFF;
+  vector<jint> seIdList;
+  for (int i = 0; i < mNfceeData_t.mNfceePresent; i++) {
+    if (mNfceeData_t.mNfceeStatus[i] == NFC_NFCEE_STATUS_ACTIVE) {
+      seId = getGenericEseId(
+          (mNfceeData_t.mNfceeHandle[i] & ~NFA_HANDLE_GROUP_EE));
+      seIdList.push_back(seId);
+      LOG(INFO) << StringPrintf("%s: seID=0x%X", __func__, seId);
     }
-
-    return list;
+  }
+  jintArray list = e->NewIntArray(seIdList.size());
+  e->SetIntArrayRegion(list, 0, seIdList.size(), seIdList.data());
+  return list;
 }
 /*******************************************************************************
 **
@@ -992,15 +961,18 @@ bool SecureElement::activate (jint seID)
     static const char fn [] = "SecureElement::activate";
     tNFA_HANDLE handle = getEseHandleFromGenericId(seID);
     uint8_t ActivePipeId = getGateAndPipeList(handle);
-
     LOG(INFO) << StringPrintf("%s: enter handle=0x%X, seID=0x%X", fn, handle,seID);
     // Get Fresh EE info if needed.
     if (!getEeInfo()) {
       LOG(ERROR) << StringPrintf("%s: no EE info", fn);
       return false;
     }
-    if ((seID == ESE_ID && ActivePipeId != SMX_ESE_PIPE_ID) ||
-        (seID == EUICC_ID && ActivePipeId != SMX_EUICC_PIPE_ID)) {
+
+    if ((seID == ESE_ID || seID == EUICC_ID || seID == EUICC2_ID) &&
+        (ActivePipeId == SMX_ESE_PIPE_ID || ActivePipeId == SMX_EUICC_PIPE_ID )) {
+      LOG(ERROR) << StringPrintf("%s: Pipe ID:0x%X is created for seID=0x%X", fn,
+                                 ActivePipeId, seID);
+    } else {
       LOG(ERROR) << StringPrintf("%s: Pipe is not created", fn);
       return false;
     }
@@ -1512,6 +1484,8 @@ tNFA_HANDLE SecureElement::getEseHandleFromGenericId(jint eseId)
     else if(eseId == EUICC_ID)
     {
         handle = EE_HANDLE_0xF5; //0x4C1;
+    } else if (eseId == EUICC2_ID) {
+        handle = EE_HANDLE_0xF6;  // 0x4C2;
     }
     LOG(INFO) << StringPrintf("%s: enter; ESE-Handle = 0x%03X", fn, handle);
     return handle;
@@ -1655,19 +1629,6 @@ uint8_t SecureElement::getGateAndPipeList(tNFA_HANDLE eeHandle) {
       "gate: 0x%02x  pipe: 0x%02x",
       fn, mNewSourceGate, mNewPipeId);
   return mNewPipeId;
-}
-/*******************************************************************************
-**
-** Function         getLastRfFiledToggleTime
-**
-** Description      Provides the last RF filed toggile timer
-**
-** Returns          timespec
-**
-*******************************************************************************/
-struct timespec SecureElement::getLastRfFiledToggleTime(void)
-{
-  return mLastRfFieldToggle;
 }
 /*******************************************************************************
 **

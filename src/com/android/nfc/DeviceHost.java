@@ -29,7 +29,7 @@
 *  See the License for the specific language governing permissions and
 *  limitations under the License.
 *
-*  Copyright 2018-2022 NXP
+*  Copyright 2018-2024 NXP
 *
 ******************************************************************************/
 package com.android.nfc;
@@ -66,18 +66,6 @@ public interface DeviceHost {
         public void onNotifySrdEvt(int event);
 
         public void onNotifyEfdmEvt(int efdmEvt);
-
-        /**
-         * Notifies P2P Device detected, to activate LLCP link
-         */
-        public void onLlcpLinkActivated(NfcDepEndpoint device);
-
-        /**
-         * Notifies P2P Device detected, to activate LLCP link
-         */
-        public void onLlcpLinkDeactivated(NfcDepEndpoint device);
-
-        public void onLlcpFirstPacketReceived(NfcDepEndpoint device);
 
         public void onRemoteFieldActivated();
 
@@ -116,6 +104,8 @@ public interface DeviceHost {
         void startPresenceChecking(int presenceCheckDelay,
                                    @Nullable TagDisconnectedCallback callback);
         void stopPresenceChecking();
+        boolean isPresenceCheckStopped();
+        void prepareForRemovalDetectionMode();
 
         int[] getTechList();
         void removeTechnology(int tech); // TODO remove this one
@@ -183,48 +173,6 @@ public interface DeviceHost {
         public int getMode();
 
         public byte[] getGeneralBytes();
-
-        public byte getLlcpVersion();
-    }
-
-    public interface LlcpSocket {
-        public void connectToSap(int sap) throws IOException;
-
-        public void connectToService(String serviceName) throws IOException;
-
-        public void close() throws IOException;
-
-        public void send(byte[] data) throws IOException;
-
-        public int receive(byte[] recvBuff) throws IOException;
-
-        public int getRemoteMiu();
-
-        public int getRemoteRw();
-
-        public int getLocalSap();
-
-        public int getLocalMiu();
-
-        public int getLocalRw();
-    }
-
-    public interface LlcpServerSocket {
-        public LlcpSocket accept() throws IOException, LlcpException;
-
-        public void close() throws IOException;
-    }
-
-    public interface LlcpConnectionlessSocket {
-        public int getLinkMiu();
-
-        public int getSap();
-
-        public void send(int sap, byte[] data) throws IOException;
-
-        public LlcpPacket receive() throws IOException;
-
-        public void close() throws IOException;
     }
 
     /**
@@ -289,19 +237,6 @@ public interface DeviceHost {
 
     public int getLfT3tMax();
 
-    public LlcpConnectionlessSocket createLlcpConnectionlessSocket(int nSap, String sn)
-            throws LlcpException;
-
-    public LlcpServerSocket createLlcpServerSocket(int nSap, String sn, int miu,
-            int rw, int linearBufferLength) throws LlcpException;
-
-    public LlcpSocket createLlcpSocket(int sap, int miu, int rw,
-            int linearBufferLength) throws LlcpException;
-
-    public boolean doCheckLlcp();
-
-    public boolean doActivateLlcp();
-
     public void resetTimeouts();
 
     public boolean setTimeout(int technology, int timeout);
@@ -322,10 +257,6 @@ public interface DeviceHost {
 
     boolean getExtendedLengthApdusSupported();
 
-    int getDefaultLlcpMiu();
-
-    int getDefaultLlcpRwSize();
-
     void dump(FileDescriptor fd);
 
     boolean enableScreenOffSuspend();
@@ -341,8 +272,6 @@ public interface DeviceHost {
     void startPoll();
 
     int mposSetReaderMode(boolean on);
-
-    int configureSecureReaderMode(boolean on, String readerType);
 
     boolean mposGetReaderMode();
 
@@ -378,7 +307,7 @@ public interface DeviceHost {
     void startStopPolling(boolean enable);
 
     /* NXP extension are here */
-    public void doChangeDiscoveryTech(int pollTech, int listenTech);
+    public int doChangeDiscoveryTech(int pollTech, int listenTech);
     public boolean accessControlForCOSU (int mode);
 
     public int getFWVersion();
@@ -410,4 +339,6 @@ public interface DeviceHost {
      * Enable or Disable the ULPDet Mode based on flag
      */
     boolean setULPDetMode(boolean flag);
+    public boolean isRemovalDetectionInPollModeSupported();
+    public void startRemovalDetectionProcedure(int waitTimeout);
 }
